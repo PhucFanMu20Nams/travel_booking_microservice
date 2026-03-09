@@ -3,9 +3,6 @@
 ## Booking Microservices — NestJS
 
 **Date:** March 9, 2026
-**Auditor Role:** Expert Software Architect & Senior Staff Engineer
-**Codebase:** booking-microservices-nestjs
-
 ---
 
 ## 1. Core Requirements
