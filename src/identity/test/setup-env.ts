@@ -12,6 +12,10 @@ if (fs.existsSync(envTestPath)) {
   dotenv.config({ path: envTestPath });
 }
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim() === '') {
-  process.env.JWT_SECRET = 'test-jwt-secret';
+const normalizedJwtSecret = process.env.JWT_SECRET?.trim();
+
+if (!normalizedJwtSecret || normalizedJwtSecret.length < 16) {
+  process.env.JWT_SECRET = 'test-jwt-secret-1234';
+} else {
+  process.env.JWT_SECRET = normalizedJwtSecret;
 }

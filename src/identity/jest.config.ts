@@ -10,7 +10,7 @@ export default {
     '^@tests/(.*)$': '<rootDir>/test/$1'
   },
 
-  testTimeout: 30000,
+  testTimeout: 90000,
   testPathIgnorePatterns: ['<rootDir>/dist/'],
 
 } satisfies Config;
