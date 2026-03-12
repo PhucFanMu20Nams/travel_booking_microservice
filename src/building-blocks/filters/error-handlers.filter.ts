@@ -19,6 +19,18 @@ import { serializeObject } from '../utils/serilization';
 
 @Catch()
 export class ErrorHandlersFilter implements ExceptionFilter {
+  private logProblem(problem: ProblemDocument): void {
+    const serializedProblem = serializeObject(problem);
+    const status = Number(problem.status);
+
+    if (Number.isInteger(status) && status >= HttpStatus.BAD_REQUEST && status < 500) {
+      Logger.warn(serializedProblem);
+      return;
+    }
+
+    Logger.error(serializedProblem);
+  }
+
   private getHttpStatus(err: any): number | undefined {
     if (typeof err?.getStatus === 'function') {
       const status = Number(err.getStatus());
@@ -113,7 +125,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.BAD_REQUEST).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -128,7 +140,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.BAD_REQUEST).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -142,7 +154,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
       });
       response.status(HttpStatus.UNAUTHORIZED).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -157,7 +169,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.FORBIDDEN).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -172,7 +184,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.NOT_FOUND).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -187,7 +199,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.CONFLICT).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -203,7 +215,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(httpStatus).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -218,7 +230,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
       response.status(HttpStatus.BAD_REQUEST).json(problem);
 
-      Logger.error(serializeObject(problem));
+      this.logProblem(problem);
 
       return;
     }
@@ -232,7 +244,7 @@ export class ErrorHandlersFilter implements ExceptionFilter {
 
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(problem);
 
-    Logger.error(serializeObject(problem));
+    this.logProblem(problem);
 
     return;
   }
