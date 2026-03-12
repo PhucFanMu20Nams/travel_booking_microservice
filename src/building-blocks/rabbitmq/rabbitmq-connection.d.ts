@@ -21,4 +21,7 @@ export declare class RabbitmqConnection implements OnModuleInit, IRabbitmqConnec
     getChannel(): Promise<amqp.Channel>;
     closeChanel(): Promise<void>;
     closeConnection(): Promise<void>;
+    private isExpectedCloseError;
+    private closeChannelInternal;
+    private closeConnectionInternal;
 }

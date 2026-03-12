@@ -15,6 +15,7 @@ export class RabbitmqOptions {
 
 let connection: amqp.Connection = null;
 let channel: amqp.Channel = null;
+let isShuttingDown = false;
 
 export interface IRabbitmqConnection {
   createConnection(options?: RabbitmqOptions): Promise<amqp.Connection>;
@@ -31,11 +32,16 @@ export class RabbitmqConnection implements OnModuleInit, IRabbitmqConnection {
   constructor(@Inject(RabbitmqOptions) private readonly options?: RabbitmqOptions) {}
 
   async onModuleInit(): Promise<void> {
+    isShuttingDown = false;
     await this.createConnection(this.options);
   }
 
   async createConnection(options?: RabbitmqOptions): Promise<amqp.Connection> {
-    if (!connection || !connection == undefined) {
+    if (isShuttingDown) {
+      return connection;
+    }
+
+    if (!connection) {
       try {
         const host = options?.host ?? configs.rabbitmq.host;
         const port = options?.port ?? configs.rabbitmq.port;
@@ -56,9 +62,21 @@ export class RabbitmqConnection implements OnModuleInit, IRabbitmqConnection {
         );
 
         connection.on('error', async (error): Promise<void> => {
+          if (isShuttingDown) {
+            Logger.warn(`Connection error observed during shutdown: ${error}`);
+            return;
+          }
+
           Logger.error(`Error occurred on connection: ${error}`);
-          await this.closeConnection();
+
+          await this.closeConnectionInternal(false);
+
           await this.createConnection();
+        });
+
+        connection.on('close', (): void => {
+          connection = null;
+          channel = null;
         });
       } catch (error) {
         throw new Error('Rabbitmq connection is failed!');
@@ -72,7 +90,7 @@ export class RabbitmqConnection implements OnModuleInit, IRabbitmqConnection {
         throw new Error('Rabbitmq connection is failed!');
       }
 
-      if ((connection && !channel) || !channel) {
+      if (!channel) {
         await asyncRetry(
           async () => {
             channel = await connection.createChannel();
@@ -85,39 +103,92 @@ export class RabbitmqConnection implements OnModuleInit, IRabbitmqConnection {
             maxTimeout: configs.retry.maxTimeout
           }
         );
-      }
 
-      channel.on('error', async (error): Promise<void> => {
-        Logger.error(`Error occurred on channel: ${error}`);
-        await this.closeChanel();
-        await this.getChannel();
-      });
+        channel.on('error', async (error): Promise<void> => {
+          if (isShuttingDown) {
+            Logger.warn(`Error occurred on channel during shutdown: ${error}`);
+            return;
+          }
+
+          Logger.error(`Error occurred on channel: ${error}`);
+          await this.closeChannelInternal(false);
+          await this.getChannel();
+        });
+      }
 
       return channel;
     } catch (error) {
+      if (isShuttingDown) {
+        Logger.warn('Failed to get channel during shutdown');
+        return;
+      }
+
       Logger.error('Failed to get channel!');
     }
   }
 
   async closeChanel(): Promise<void> {
-    try {
-      if (channel) {
-        await channel.close();
-        Logger.log('Channel closed successfully');
-      }
-    } catch (error) {
-      Logger.error('Channel close failed!');
-    }
+    await this.closeChannelInternal(isShuttingDown);
   }
 
   async closeConnection(): Promise<void> {
+    await this.closeConnectionInternal(true);
+  }
+
+  private isExpectedCloseError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    const normalizedMessage = message.toLowerCase();
+
+    return (
+      normalizedMessage.includes('closed') ||
+      normalizedMessage.includes('closing') ||
+      normalizedMessage.includes('unexpected close')
+    );
+  }
+
+  private async closeChannelInternal(shutdownMode: boolean): Promise<void> {
+    try {
+      if (channel) {
+        const activeChannel = channel;
+        channel = null;
+        await activeChannel.close();
+        Logger.log('Channel closed successfully');
+      }
+    } catch (error) {
+      if (shutdownMode && this.isExpectedCloseError(error)) {
+        Logger.warn('Channel was already closed during shutdown');
+        return;
+      }
+
+      Logger.error('Channel close failed!');
+    } finally {
+      channel = null;
+    }
+  }
+
+  private async closeConnectionInternal(shutdownMode: boolean): Promise<void> {
+    if (shutdownMode) {
+      isShuttingDown = true;
+    }
+
+    await this.closeChannelInternal(shutdownMode || isShuttingDown);
+
     try {
       if (connection) {
-        await connection.close();
+        const activeConnection = connection;
+        connection = null;
+        await activeConnection.close();
         Logger.log('Connection Rabbitmq closed gracefully');
       }
     } catch (error) {
+      if ((shutdownMode || isShuttingDown) && this.isExpectedCloseError(error)) {
+        Logger.warn('Connection Rabbitmq was already closed during shutdown');
+        return;
+      }
+
       Logger.error('Connection Rabbitmq close failed!');
+    } finally {
+      connection = null;
     }
   }
 }
