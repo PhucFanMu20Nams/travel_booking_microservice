@@ -9,12 +9,19 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 jobs:
 
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
