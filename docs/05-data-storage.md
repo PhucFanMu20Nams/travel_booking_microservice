@@ -1,113 +1,64 @@
 # 5. Data Storage
 
-## Databases, ORMs, and Configuration
+## Databases and ORM
 
-| Component | Technology | Configuration |
-|-----------|------------|---------------|
-| **RDBMS** | PostgreSQL 16 | deployments/docker-compose/docker-compose.yaml |
-| **ORM** | TypeORM | Each service's `data-source.ts` (e.g., src/booking/src/data/data-source.ts) |
-| **Config Validation** | Joi schema | src/building-blocks/configs/configs.ts |
-| **RDS Support** | AWS RDS override | deployments/docker-compose/docker-compose.rds.yaml |
+| Component | Technology | Notes |
+|-----------|------------|-------|
+| **RDBMS** | PostgreSQL 16 | Shared server, logical database per service |
+| **ORM** | TypeORM | Each service keeps its own `data-source.ts` |
+| **Schema Management** | TypeORM migrations | `POSTGRES_MIGRATIONS_RUN=true` in docker/dev |
 
-## Core Data Models
+## Core Models After Payment Hardening
 
-```typescript
-// ─── Identity Service ───────────────────────────────
-// src/identity/src/user/entities/user.entity.ts
-@Entity()
-export class User {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() email: string;
-  @Column() password: string;      // bcrypt hashed
-  @Column() name: string;
-  @Column() passportNumber: string;
-  @Column() age: number;
-  @Column({ type: 'enum', enum: Role }) role: Role;               // USER=0, ADMIN=1
-  @Column({ type: 'enum', enum: PassengerType }) passengerType: PassengerType;
-  @Column({ default: false }) isEmailVerified: boolean;
-  @Column() createdAt: Date;
-  @Column({ nullable: true }) updatedAt?: Date;
-}
+### Flight
 
-@Entity()
-export class Token {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() token: string;
-  @Column() refreshToken: string;
-  @Column() userId: number;
-  @Column({ type: 'enum', enum: TokenType }) type: TokenType;     // ACCESS=0, REFRESH=1
-  @Column() expires: Date;
-  @Column({ default: false }) blacklisted: boolean;
-  @Column() createdAt: Date;
-}
+- `flight.price` remains the **base fare**.
+- `seat.price` is **computed at runtime**, not persisted, using class multipliers:
+  - `ECONOMY = 1.0`
+  - `BUSINESS = 1.75`
+  - `FIRST_CLASS = 2.5`
 
-// ─── Flight Service ─────────────────────────────────
-// src/flight/src/flight/entities/flight.entity.ts
-@Entity()
-export class Flight {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() flightNumber: string;
-  @Column() price: number;
-  @Column({ type: 'enum', enum: FlightStatus }) flightStatus: FlightStatus;
-  @Column() flightDate: Date;
-  @Column() departureDate: Date;
-  @Column() departureAirportId: number;
-  @Column() aircraftId: number;
-  @Column() arriveDate: Date;
-  @Column() arriveAirportId: number;
-  @Column() durationMinutes: number;
-}
+### Booking
 
-@Entity()
-export class Seat {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() seatNumber: string;
-  @Column({ type: 'enum', enum: SeatClass }) seatClass: SeatClass;
-  @Column({ type: 'enum', enum: SeatType }) seatType: SeatType;
-  @Column() flightId: number;
-  @Column({ default: false }) isReserved: boolean;
-}
+`booking` now persists the locked commercial state required for a realistic checkout:
 
-// ─── Passenger Service ──────────────────────────────
-// src/passenger/src/passenger/entities/passenger.entity.ts
-@Entity()
-export class Passenger {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() userId: number;
-  @Column() name: string;
-  @Column() passportNumber: string;
-  @Column() age: number;
-  @Column({ type: 'enum', enum: PassengerType }) passengerType: PassengerType;
-}
+| Field | Purpose |
+|-------|---------|
+| `bookingStatus` | `PENDING_PAYMENT`, `CONFIRMED`, `EXPIRED`, `CANCELED` |
+| `price` | locked seat-aware amount captured at reservation time |
+| `currency` | `VND` |
+| `seatClass` | class of the reserved seat |
+| `paymentId` | payment reference owned by `payment` service |
+| `paymentExpiresAt` | checkout/payment hold deadline |
+| `confirmedAt` | timestamp when payment success confirmed the booking |
+| `expiredAt` | timestamp when payment expiry released the booking |
 
-// ─── Booking Service ────────────────────────────────
-// src/booking/src/booking/entities/booking.entity.ts
-@Entity()
-export class Booking {
-  @PrimaryGeneratedColumn() id: number;
-  @Column() flightNumber: string;
-  @Column({ nullable: true }) flightId?: number;
-  @Column() aircraftId: number;
-  @Column() departureAirportId: number;
-  @Column() arriveAirportId: number;
-  @Column() flightDate: Date;
-  @Column() price: number;
-  @Column() description: string;
-  @Column() seatNumber: string;
-  @Column() passengerName: string;
-  @Column({ nullable: true }) userId?: number;
-  @Column({ nullable: true }) passengerId?: number;
-  @Column({ type: 'enum', enum: BookingStatus }) bookingStatus: BookingStatus;
-  @Column({ nullable: true }) canceledAt?: Date;
-}
-```
+Additional booking-side persistence:
 
-## Persistence Strategy
+- `booking_idempotency_record`
+- `booking_processed_message`
 
-| Aspect | Strategy |
-|--------|----------|
-| **Schema Management** | TypeORM `synchronize` mode (configurable via `POSTGRES_SYNCHRONIZE` env var) |
-| **Migrations** | Supported via TypeORM DataSource config (`POSTGRES_MIGRATIONS`, `POSTGRES_MIGRATIONS_RUN`) |
-| **Seeding** | `DataSeeder` classes in Identity and Flight services, run on bootstrap via `OnApplicationBootstrap` |
-| **ACID** | PostgreSQL default transaction isolation; individual entity saves (not explicit multi-table transactions) |
-| **SSL** | Configurable via `POSTGRES_SSL` and `POSTGRES_SSL_REJECT_UNAUTHORIZED` |
+### Payment
+
+`payment` owns all finance-related persistence:
+
+| Table | Purpose |
+|-------|---------|
+| `payment_intent` | current payment state for a booking |
+| `payment_attempt` | each confirmation attempt and fake gateway scenario |
+| `refund` | refund history per payment |
+| `payment_idempotency_record` | HTTP idempotency for payment confirmation |
+| `payment_processed_message` | inbox dedupe for refund events |
+
+## Constraints and Indexes
+
+- `booking.paymentId` is unique when present.
+- `booking` has a partial unique index enforcing **one active booking per user per flight** where status is `PENDING_PAYMENT` or `CONFIRMED`.
+- `payment_intent.bookingId` is unique to ensure one payment intent per booking.
+- processed-message and idempotency tables have unique composite indexes on their dedupe keys.
+
+## Legacy Data Handling
+
+- Pre-rollout bookings keep `paymentId = null`.
+- Old confirmed bookings are migrated to the new `bookingStatus = CONFIRMED`.
+- No synthetic historical payments are generated for legacy rows.

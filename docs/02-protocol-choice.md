@@ -2,33 +2,48 @@
 
 ## Communication Protocols
 
-| Protocol | Transport | Location | Usage |
-|----------|-----------|----------|-------|
-| **HTTP/REST** | TCP (JSON) | All 4 services expose REST APIs | Synchronous client-facing operations |
-| **AMQP 0-9-1** | TCP (RabbitMQ) | src/building-blocks/rabbitmq/ | Asynchronous inter-service event pub/sub |
-| **OTLP/gRPC** | TCP (gRPC) | src/building-blocks/openTelemetry/opentelemetry.module.ts | Traces, metrics, logs export to OTEL Collector |
+| Protocol | Transport | Primary Usage |
+|----------|-----------|---------------|
+| **HTTP/REST** | TCP + JSON | Client-facing APIs and synchronous service-to-service orchestration |
+| **AMQP 0-9-1** | TCP via RabbitMQ | Domain events, compensation, confirmation, expiry, refund workflows |
+| **OTLP/gRPC** | TCP + gRPC | Traces, metrics, and logs export to the observability stack |
 
-## Communication Style
+## Current Communication Style
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                  SYNCHRONOUS (HTTP/REST)                       │
-│                                                                │
-│  Client ──► Identity (login)                                   │
-│  Client ──► Flight (create-flight, reserve-seat)               │
-│  Client ──► Booking (create-booking)                           │
-│  Booking ──► Flight (getFlightById, reserveSeat) via Axios     │
-│  Booking ──► Passenger (getPassengerByUserId) via Axios        │
-│  JwtGuard ──► Identity (validate-access-token) via fetch()     │
-│                                                                │
-│              ASYNCHRONOUS (AMQP / RabbitMQ)                    │
-│                                                                │
-│  Identity ──publish──► UserCreated ──consume──► Passenger      │
-│  Identity ──publish──► UserUpdated ──consume──► Passenger      │
-│  Flight   ──publish──► FlightCreated, SeatCreated, SeatReserved│
-│  Booking  ──publish──► BookingCreated                          │
-│  Booking  ──publish──► SeatReleaseRequested ──consume──► Flight│
-└────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           SYNCHRONOUS HTTP/REST                            │
+│                                                                              │
+│ Frontend ──► Identity  (login, user context)                                 │
+│ Frontend ──► Flight    (search flights, list seats)                          │
+│ Frontend ──► Booking   (create checkout, list/detail/cancel booking)         │
+│ Frontend ──► Payment   (confirm payment, fetch payment status)               │
+│ Booking  ──► Flight    (getFlightById, reserveSeat)                          │
+│ Booking  ──► Passenger (getPassengerByUserId)                                │
+│ Booking  ──► Payment   (create payment intent, get payment by id)            │
+│ JwtGuard ──► Identity  (validate access token)                               │
+│                                                                              │
+│                           ASYNCHRONOUS AMQP/RabbitMQ                         │
+│                                                                              │
+│ Identity ──publish──► UserCreated / UserUpdated ──consume──► Passenger       │
+│ Booking  ──publish──► SeatReleaseRequested ──consume──► Flight               │
+│ Payment  ──publish──► PaymentSucceeded ──consume──► Booking                  │
+│ Payment  ──publish──► PaymentExpired   ──consume──► Booking                  │
+│ Booking  ──publish──► PaymentRefundRequested ──consume──► Payment            │
+│ Booking  ──publish──► BookingCreated (only after paid confirmation)          │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Core networking approach:** Hybrid synchronous + asynchronous. REST for queries & commands requiring immediate response; AMQP fanout exchanges for domain events that propagate state changes across bounded contexts. Each RabbitMQ consumer gets a per-service named queue with dead-letter routing.
+## Why This Mix
+
+- `HTTP/REST` remains the right fit where the caller needs an immediate answer: creating a checkout, reserving a seat, showing payment status, or canceling a booking.
+- `AMQP` is now used for the cross-service state transitions that must remain decoupled: payment success, payment expiry, refund execution, and seat release compensation.
+- The system keeps a microservice shape: `booking` owns reservation state, `flight` owns sellable inventory, `payment` owns money state, and events connect the long-running workflow.
+
+## Envelope and Idempotency
+
+- RabbitMQ publishers for `booking`, `flight`, and `payment` now run with the shared message envelope enabled.
+- Envelope fields `messageId`, `traceId`, and `idempotencyKey` are used together with per-service processed-message tables to deduplicate consumer work.
+- Client-originated idempotency is enforced on:
+  - `POST /api/v1/booking/create`
+  - `PATCH /api/v1/payment/confirm/:id`

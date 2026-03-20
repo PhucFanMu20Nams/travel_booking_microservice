@@ -1,62 +1,70 @@
 # 4. Message Flow
 
-## Scenario: "User Creates a Booking"
+## Scenario: "User Creates a Booking and Pays Successfully"
 
 ```
- Client                Identity         Booking          Flight           Passenger      RabbitMQ         PostgreSQL
-   │                      │                │                │                 │              │                │
-   │  POST /login         │                │                │                 │              │                │
-   │─────────────────────►│                │                │                 │              │                │
-   │  ◄─── JWT Access +   │                │                │                 │              │                │
-   │       Refresh Token  │                │                │                 │              │                │
-   │                      │                │                │                 │              │                │
-   │  POST /booking/create (+ Bearer JWT)  │                │                 │              │                │
-   │──────────────────────────────────────►│                │                 │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  ──── JwtGuard validates ────►  │              │                │
-   │                      │                │  POST /validate-access-token    │              │                │
-   │                      │  ◄────────────────── (sync HTTP to Identity)     │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  GET /flight/get-by-id?id=X     │              │                │
-   │                      │                │───────────────►│                 │              │                │
-   │                      │                │  ◄─── FlightDto │                │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  GET /passenger/get-by-user-id   │              │                │
-   │                      │                │────────────────────────────────►│              │                │
-   │                      │                │  ◄─── PassengerDto              │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  POST /seat/reserve              │              │                │
-   │                      │                │───────────────►│                 │              │                │
-   │                      │                │  ◄─── SeatDto  │                 │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  INSERT booking ────────────────────────────────────────────────►│
-   │                      │                │  ◄───────────────────────────────────────────── booking saved   │
-   │                      │                │                │                 │              │                │
-   │                      │                │  publish(BookingCreated) ───────────────────►  │                │
-   │                      │                │                │                 │   (fanout)   │                │
-   │                      │                │                │                 │              │                │
-   │  ◄─── 201 Created   │                │                │                 │              │                │
-   │       BookingDto     │                │                │                 │              │                │
-   │                      │                │                │                 │              │                │
+Frontend        Booking         Flight         Passenger        Payment        RabbitMQ
+   │               │               │               │               │               │
+   │ POST /booking/create          │               │               │               │
+   │──────────────►│               │               │               │               │
+   │               │ GET flight ──►│               │               │               │
+   │               │ GET passenger ───────────────►│               │               │
+   │               │ reserve seat ─►│              │               │               │
+   │               │ create booking(PENDING_PAYMENT, locked fare)  │               │
+   │               │ create-intent ───────────────────────────────►│               │
+   │ ◄─────────────│ 201 BookingCheckoutDto                        │               │
+   │               │               │               │               │               │
+   │ PATCH /payment/confirm/:id ─────────────────────────────────►│               │
+   │               │               │               │               │ create attempt │
+   │               │               │               │               │ mark SUCCEEDED │
+   │               │               │               │               │ publish PaymentSucceeded ─────►│
+   │               │ consume PaymentSucceeded ◄──────────────────────────────────────────────────────│
+   │               │ mark booking CONFIRMED                                                     │
+   │               │ publish BookingCreated ────────────────────────────────────────────────────►│
+   │ GET /booking/get-by-id ◄────────────────────────────────────────────────────────────────────│
 ```
 
-## On Failure (booking INSERT fails after seat reservation)
+## Scenario: "Payment Expires"
 
 ```
-   │                      │                │  INSERT booking fails            │              │                │
-   │                      │                │                │                 │              │                │
-   │                      │                │  publish(SeatReleaseRequested) ──────────────► │                │
-   │                      │                │                │                 │   (fanout)   │                │
-   │                      │                │                │  ◄──────────────────consume    │                │
-   │                      │                │                │  release seat   │              │                │
-   │                      │                │                │  UPDATE seat ───────────────────────────────►  │
-   │                      │                │                │                 │              │                │
-   │  ◄─── 500 Error     │                │                │                 │              │                │
+Payment scheduler finds intent past expiresAt
+   │
+   ├─ mark payment EXPIRED
+   └─ publish PaymentExpired ─────────────────────────────────────────────────────► RabbitMQ
+                                                                      │
+                                                                      ▼
+                                                            Booking consumes event
+                                                                      │
+                                                                      ├─ mark booking EXPIRED
+                                                                      └─ publish SeatReleaseRequested ───────► Flight
+                                                                                                      │
+                                                                                                      └─ release seat
 ```
 
-## Integration Patterns Used
+## Scenario: "Confirmed Booking Is Canceled"
 
-1. **Choreography-based Saga** — `Identity` publishes `UserCreated` → `Passenger` consumes and creates passenger record. No central orchestrator.
-2. **Compensating Transaction** — When booking INSERT fails after seat reservation, `Booking` publishes `SeatReleaseRequested` to release the reserved seat (partial rollback via event).
-3. **Command Handlers (CQRS)** — All write operations go through `@CommandHandler`, reads through `@QueryHandler`.
-4. **Synchronous HTTP aggregation** — `Booking.CreateBookingHandler` aggregates data from `Flight` and `Passenger` services via HTTP before persisting.
+```
+Frontend ──► Booking cancel
+                │
+                ├─ mark booking CANCELED
+                ├─ publish SeatReleaseRequested ───────────────► Flight
+                └─ publish PaymentRefundRequested ─────────────► Payment
+                                                                  │
+                                                                  ├─ create refund
+                                                                  ├─ mark refund SUCCEEDED
+                                                                  └─ publish PaymentRefunded
+```
+
+## Integration Patterns Used Now
+
+1. **Reservation + payment intent orchestration over HTTP**
+   `booking` performs the synchronous orchestration that must complete before the frontend can continue to the payment step.
+
+2. **Event-driven confirmation**
+   `payment` is the source of truth for payment success/expiry, and `booking` reacts to those events rather than assuming a booking is confirmed at create time.
+
+3. **Compensating inventory release**
+   Seat release remains explicit and asynchronous through `SeatReleaseRequested`.
+
+4. **Asynchronous refund handling**
+   Canceling a paid booking does not block on a synchronous refund call; `payment` completes the refund after the booking is already canceled.
