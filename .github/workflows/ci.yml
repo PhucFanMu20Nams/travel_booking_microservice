@@ -53,6 +53,13 @@ jobs:
           npm run build
         working-directory: ./src/flight
 
+      - name: test flight
+        run: npm test -- seat-pricing.test.ts
+        working-directory: ./src/flight
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-1234
+
       - name: build passenger
         run: |
           npm install
@@ -64,3 +71,35 @@ jobs:
           npm install
           npm run build
         working-directory: ./src/booking
+
+      - name: test booking
+        run: npm test -- create-booking.handler.test.ts
+        working-directory: ./src/booking
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-1234
+
+      - name: build payment
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/payment
+
+      - name: test payment
+        run: npm test -- confirm-payment.handler.test.ts
+        working-directory: ./src/payment
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-1234
+
+      - name: build frontend
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/frontend
+
+      - name: test frontend
+        run: |
+          npm test -- create-booking-flow.test.tsx
+          npm test -- booking-status-and-cancel.test.tsx presentation.rules.test.ts
+        working-directory: ./src/frontend

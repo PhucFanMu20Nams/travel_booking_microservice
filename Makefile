@@ -4,7 +4,7 @@ COMPOSE_RDS_CMD := docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_RDS)
 
 BACKEND_SERVICES := identity flight passenger booking
 
-.PHONY: up-rds down-rds cutover-rds restart-identity-rds stop-local-postgres rm-local-postgres ps-rds verify-rds-env logs-rds
+.PHONY: up-rds down-rds cutover-rds restart-identity-rds stop-local-postgres rm-local-postgres ps-rds verify-rds-env logs-rds rebuild-frontend wallet-proxy-smoke
 
 up-rds:
 	$(COMPOSE_RDS_CMD) up -d rabbitmq
@@ -36,3 +36,11 @@ verify-rds-env:
 
 logs-rds:
 	$(COMPOSE_RDS_CMD) logs --tail=150 $(BACKEND_SERVICES) frontend
+
+rebuild-frontend:
+	docker compose -f $(COMPOSE_BASE) build --no-cache frontend
+	docker compose -f $(COMPOSE_BASE) up -d --no-deps frontend
+	docker compose -f $(COMPOSE_BASE) exec -T frontend sh -lc "grep -n '/api/v1/wallet' /etc/nginx/conf.d/default.conf"
+
+wallet-proxy-smoke:
+	bash deployments/docker-compose/scripts/wallet-proxy-smoke.sh
