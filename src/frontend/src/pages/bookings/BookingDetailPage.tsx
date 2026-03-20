@@ -14,8 +14,21 @@ import { useCancelBooking, useGetBookingById } from '@hooks/useBookings';
 import { useGetFlightById } from '@hooks/useFlights';
 import { AirportDto } from '@/types/airport.types';
 import { BookingStatus } from '@/types/enums';
-import { bookingStatusLabels, formatCurrency, formatDateTime } from '@utils/format';
-import { buildRouteDescriptor, canCancelBooking, getBookingStatusTone } from '@utils/presentation';
+import {
+  bookingStatusLabels,
+  formatCurrency,
+  formatDateTime,
+  paymentStatusLabels,
+  refundStatusLabels,
+  seatClassLabels
+} from '@utils/format';
+import {
+  buildRouteDescriptor,
+  canCancelBooking,
+  getBookingStatusTone,
+  getPaymentStatusTone,
+  getRefundStatusTone
+} from '@utils/presentation';
 import { parseRouteId } from '@utils/helpers';
 
 export const BookingDetailPage = () => {
@@ -50,10 +63,8 @@ export const BookingDetailPage = () => {
       )
     : null;
   const bookingRelatedFlight = flightQuery.data;
-  const cancellable =
-    booking?.bookingStatus === BookingStatus.CONFIRMED &&
-    Boolean(bookingRelatedFlight) &&
-    canCancelBooking(booking, bookingRelatedFlight);
+  const cancellable = Boolean(bookingRelatedFlight) && canCancelBooking(booking, bookingRelatedFlight);
+  const canTopUpPayment = Boolean(booking?.paymentId) && booking?.bookingStatus === BookingStatus.PENDING_PAYMENT;
 
   if ((bookingQuery.isLoading || airportsQuery.isLoading || aircraftsQuery.isLoading) && !booking) {
     return <PageSkeleton variant="detail" />;
@@ -69,6 +80,17 @@ export const BookingDetailPage = () => {
         extra={
           booking ? (
             <Space>
+              {canTopUpPayment && (
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={() => {
+                    navigate(`/bookings/create?bookingId=${booking.id}`);
+                  }}
+                >
+                  Thanh toán ví
+                </Button>
+              )}
               {cancellable && (
                 <Button
                   danger
@@ -94,7 +116,7 @@ export const BookingDetailPage = () => {
           tags={
             <>
               <StatusPill label={bookingStatusLabels[booking.bookingStatus]} tone={getBookingStatusTone(booking.bookingStatus)} />
-              <StatusPill label={formatCurrency(booking.price)} tone="accent" />
+              <StatusPill label={formatCurrency(booking.price, booking.currency)} tone="accent" />
             </>
           }
           meta={`Booked ${formatDateTime(booking.createdAt)} · Flight date ${formatDateTime(booking.flightDate, 'DD/MM/YYYY')}`}
@@ -111,22 +133,32 @@ export const BookingDetailPage = () => {
 
       {booking && (
         <>
-          <SectionCard title="Boarding pass" subtitle="Visual receipt for route and seat confirmation">
-            <BoardingPassCard
-              bookingId={booking.id}
-              flightNumber={booking.flightNumber}
-              passengerName={booking.passengerName}
-              seatNumber={booking.seatNumber}
-              departureCode={route?.departure.code || '--'}
-              departureName={route?.departure.name || 'Unknown airport'}
-              departureTime={bookingRelatedFlight?.departureDate}
-              arrivalCode={route?.arrival.code || '--'}
-              arrivalName={route?.arrival.name || 'Unknown airport'}
-              arrivalTime={bookingRelatedFlight?.arriveDate}
-              flightDate={booking.flightDate}
-              price={booking.price}
-            />
-          </SectionCard>
+          {booking.bookingStatus === BookingStatus.CONFIRMED ? (
+            <SectionCard title="Boarding pass" subtitle="Visual receipt for route and seat confirmation">
+              <BoardingPassCard
+                bookingId={booking.id}
+                flightNumber={booking.flightNumber}
+                passengerName={booking.passengerName}
+                seatNumber={booking.seatNumber}
+                departureCode={route?.departure.code || '--'}
+                departureName={route?.departure.name || 'Unknown airport'}
+                departureTime={bookingRelatedFlight?.departureDate}
+                arrivalCode={route?.arrival.code || '--'}
+                arrivalName={route?.arrival.name || 'Unknown airport'}
+                arrivalTime={bookingRelatedFlight?.arriveDate}
+                flightDate={booking.flightDate}
+                price={booking.price}
+              />
+            </SectionCard>
+          ) : (
+            <SectionCard title="Boarding pass" subtitle="Boarding pass chỉ hiện sau khi booking đã được confirmed">
+              <StatusPill
+                label={bookingStatusLabels[booking.bookingStatus]}
+                tone={getBookingStatusTone(booking.bookingStatus)}
+                subtle
+              />
+            </SectionCard>
+          )}
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={12}>
@@ -149,6 +181,29 @@ export const BookingDetailPage = () => {
                     />
                   </Descriptions.Item>
                   <Descriptions.Item label="Seat">{booking.seatNumber}</Descriptions.Item>
+                  <Descriptions.Item label="Seat class">{seatClassLabels[booking.seatClass]}</Descriptions.Item>
+                  <Descriptions.Item label="Payment">
+                    {booking.paymentSummary ? (
+                      <StatusPill
+                        label={paymentStatusLabels[booking.paymentSummary.paymentStatus]}
+                        tone={getPaymentStatusTone(booking.paymentSummary.paymentStatus)}
+                        subtle
+                      />
+                    ) : (
+                      'Legacy / no payment'
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Refund">
+                    {booking.paymentSummary ? (
+                      <StatusPill
+                        label={refundStatusLabels[booking.paymentSummary.refundStatus]}
+                        tone={getRefundStatusTone(booking.paymentSummary.refundStatus)}
+                        subtle
+                      />
+                    ) : (
+                      'N/A'
+                    )}
+                  </Descriptions.Item>
                 </Descriptions>
               </SectionCard>
             </Col>
@@ -156,11 +211,14 @@ export const BookingDetailPage = () => {
               <SectionCard title="Booking payload" subtitle="Passenger, fare and note">
                 <Descriptions bordered column={1}>
                   <Descriptions.Item label="Passenger">{booking.passengerName}</Descriptions.Item>
-                  <Descriptions.Item label="Fare">{formatCurrency(booking.price)}</Descriptions.Item>
+                  <Descriptions.Item label="Fare">{formatCurrency(booking.price, booking.currency)}</Descriptions.Item>
                   <Descriptions.Item label="Description">{booking.description || 'N/A'}</Descriptions.Item>
+                  <Descriptions.Item label="Payment expires at">{formatDateTime(booking.paymentExpiresAt)}</Descriptions.Item>
+                  <Descriptions.Item label="Confirmed at">{formatDateTime(booking.confirmedAt)}</Descriptions.Item>
                   <Descriptions.Item label="Created">{formatDateTime(booking.createdAt)}</Descriptions.Item>
                   <Descriptions.Item label="Updated">{formatDateTime(booking.updatedAt)}</Descriptions.Item>
                   <Descriptions.Item label="Canceled at">{formatDateTime(booking.canceledAt)}</Descriptions.Item>
+                  <Descriptions.Item label="Expired at">{formatDateTime(booking.expiredAt)}</Descriptions.Item>
                 </Descriptions>
               </SectionCard>
             </Col>

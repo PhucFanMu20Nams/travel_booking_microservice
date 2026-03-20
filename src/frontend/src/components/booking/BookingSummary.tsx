@@ -70,7 +70,10 @@ export const BookingSummary = ({ flight, selectedSeat, passenger, airportsMap }:
             <SummaryItem label="Flight date" value={formatDateTime(flight.flightDate, 'DD/MM/YYYY')} />
           </Col>
           <Col xs={24} sm={12}>
-            <SummaryItem label="Fare" value={formatCurrency(flight.price)} />
+            <SummaryItem
+              label="Fare"
+              value={formatCurrency(selectedSeat?.price || flight.price, selectedSeat?.currency || 'VND')}
+            />
           </Col>
           <Col xs={24} sm={12}>
             <SummaryItem

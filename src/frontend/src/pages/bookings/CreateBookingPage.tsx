@@ -13,6 +13,7 @@ import {
   Grid,
   Input,
   Pagination,
+  Progress,
   Row,
   Space,
   Steps,
@@ -22,6 +23,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { bookingApi } from '@api/booking.api';
 import { BoardingPassCard } from '@components/booking/BoardingPassCard';
 import { BookingSummary } from '@components/booking/BookingSummary';
 import { FlightCard } from '@components/booking/FlightCard';
@@ -33,24 +35,33 @@ import { SectionCard } from '@components/common/SectionCard';
 import { StatusPill } from '@components/common/StatusPill';
 import { useGetAircrafts } from '@hooks/useAircrafts';
 import { useGetAirports } from '@hooks/useAirports';
-import { useCreateBooking, useGetBookings } from '@hooks/useBookings';
+import { useCreateBooking, useGetBookingById } from '@hooks/useBookings';
 import { useGetFlightById, useGetFlights } from '@hooks/useFlights';
 import { useGetPassengerByUserId } from '@hooks/usePassengers';
+import { useGetPaymentById, useGetWalletMe, usePayBookingWithWallet } from '@hooks/usePayments';
 import { useGetAvailableSeats } from '@hooks/useSeats';
 import { useAuthStore } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
-import { BookingDto } from '@/types/booking.types';
+import { BookingCheckoutDto, BookingDto } from '@/types/booking.types';
 import { PaginationParams } from '@/types/common.types';
-import { SeatClass } from '@/types/enums';
+import { BookingStatus, PaymentStatus, SeatClass } from '@/types/enums';
 import { FlightDto } from '@/types/flight.types';
 import { SeatDto } from '@/types/seat.types';
-import { formatCurrency, seatClassLabels, seatTypeLabels } from '@utils/format';
+import {
+  bookingStatusLabels,
+  formatCurrency,
+  paymentStatusLabels,
+  seatClassLabels,
+  seatTypeLabels
+} from '@utils/format';
+import { normalizeProblemError } from '@utils/helpers';
 import {
   buildSeatGrid,
   buildRouteDescriptor,
   formatDateLabel,
   formatScheduleStrip,
   isFlightBookable,
+  getPaymentStatusTone,
   getSeatClassTone,
   getSeatTypeTone
 } from '@utils/presentation';
@@ -58,8 +69,13 @@ import {
 const { TextArea } = Input;
 const { Text } = Typography;
 
-type BookingStep = 0 | 1 | 2 | 3;
+type BookingStep = 0 | 1 | 2 | 3 | 4;
 type SeatViewMode = 'map' | 'list';
+type InlineAlert = {
+  type: 'success' | 'info' | 'warning' | 'error';
+  message: string;
+  description?: string;
+};
 
 const seatClassToCss = (seatClass: SeatClass): string => {
   if (seatClass === SeatClass.FIRST_CLASS) return 'first-class';
@@ -67,10 +83,14 @@ const seatClassToCss = (seatClass: SeatClass): string => {
   return 'economy';
 };
 
+const createIdempotencyKey = () =>
+  globalThis.crypto?.randomUUID?.() || `idempo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 export const CreateBookingPage = () => {
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
   const [searchParams] = useSearchParams();
+  const queryBookingId = Number(searchParams.get('bookingId') || 0);
   const queryFlightId = Number(searchParams.get('flightId') || 0);
 
   const [step, setStep] = useState<BookingStep>(0);
@@ -82,36 +102,146 @@ export const CreateBookingPage = () => {
     orderBy: 'flightDate',
     searchTerm: ''
   });
-  const [selectedFlightId, setSelectedFlightId] = useState<number>(queryFlightId || 0);
+  const [selectedFlightId, setSelectedFlightId] = useState<number>(queryBookingId > 0 ? 0 : queryFlightId || 0);
   const [selectedSeatNumber, setSelectedSeatNumber] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const [checkout, setCheckout] = useState<BookingCheckoutDto | null>(null);
   const [createdBooking, setCreatedBooking] = useState<BookingDto | null>(null);
+  const [inlineAlert, setInlineAlert] = useState<InlineAlert | null>(null);
+  const [resumeWarning, setResumeWarning] = useState<InlineAlert | null>(null);
+  const [duplicateBookingId, setDuplicateBookingId] = useState<number | null>(null);
+  const [countdownNow, setCountdownNow] = useState<number>(Date.now());
+  const [isSyncingConfirmedBooking, setIsSyncingConfirmedBooking] = useState(false);
+  const [syncedPaymentId, setSyncedPaymentId] = useState<number | null>(null);
+  const [resumeHandledBookingId, setResumeHandledBookingId] = useState<number | null>(null);
 
   const { getUserIdFromToken } = useAuthStore();
   const currentUserId = getUserIdFromToken() || 0;
 
   const flightsQuery = useGetFlights(flightParams);
+  const bookingDeepLinkQuery = useGetBookingById(queryBookingId);
+  const activePaymentId =
+    checkout?.payment?.id ||
+    (bookingDeepLinkQuery.data?.bookingStatus === BookingStatus.PENDING_PAYMENT
+      ? (bookingDeepLinkQuery.data?.paymentId ?? 0)
+      : 0);
   const selectedFlightQuery = useGetFlightById(selectedFlightId);
   const seatsQuery = useGetAvailableSeats(selectedFlightId);
   const airportsQuery = useGetAirports();
   const aircraftsQuery = useGetAircrafts();
   const passengerQuery = useGetPassengerByUserId(currentUserId);
   const createBookingMutation = useCreateBooking();
-  const latestBookingsQuery = useGetBookings({
-    page: 1,
-    pageSize: 1,
-    order: 'DESC',
-    orderBy: 'id'
+  const walletQuery = useGetWalletMe(true);
+  const payBookingWithWalletMutation = usePayBookingWithWallet();
+  const paymentQuery = useGetPaymentById(activePaymentId, {
+    refetchInterval: step === 3 ? 5000 : false
   });
 
   const flights = useMemo(() => flightsQuery.data?.data ?? [], [flightsQuery.data]);
   const seats = useMemo(() => seatsQuery.data ?? [], [seatsQuery.data]);
 
   useEffect(() => {
+    if (queryBookingId > 0) {
+      return;
+    }
+
     if (!selectedFlightId && queryFlightId > 0) {
       setSelectedFlightId(queryFlightId);
     }
-  }, [queryFlightId, selectedFlightId]);
+  }, [queryBookingId, queryFlightId, selectedFlightId]);
+
+  useEffect(() => {
+    setResumeHandledBookingId(null);
+    setResumeWarning(null);
+  }, [queryBookingId]);
+
+  useEffect(() => {
+    if (queryBookingId <= 0 || resumeHandledBookingId === queryBookingId) {
+      return;
+    }
+
+    if (bookingDeepLinkQuery.isLoading) {
+      return;
+    }
+
+    const targetBooking = bookingDeepLinkQuery.data;
+    if (!targetBooking) {
+      setResumeWarning({
+        type: 'warning',
+        message: 'Không tìm thấy booking để nạp tiền',
+        description: 'Liên kết nạp tiền không hợp lệ hoặc booking đã bị xóa.'
+      });
+      setResumeHandledBookingId(queryBookingId);
+      return;
+    }
+
+    if (targetBooking.bookingStatus !== BookingStatus.PENDING_PAYMENT) {
+      setResumeWarning({
+        type: 'warning',
+        message: `Booking #${targetBooking.id} không ở trạng thái chờ thanh toán`,
+        description: 'Booking đã confirmed/expired/canceled nên không thể nạp tiền cho lệnh này.'
+      });
+      setResumeHandledBookingId(queryBookingId);
+      return;
+    }
+
+    if (!targetBooking.paymentId) {
+      setResumeWarning({
+        type: 'warning',
+        message: `Booking #${targetBooking.id} chưa có lệnh thanh toán`,
+        description: 'Booking này thiếu paymentId nên chưa thể vào bước nạp tiền.'
+      });
+      setResumeHandledBookingId(queryBookingId);
+      return;
+    }
+
+    if (!targetBooking.flightId) {
+      setResumeWarning({
+        type: 'warning',
+        message: `Booking #${targetBooking.id} thiếu thông tin chuyến bay`,
+        description: 'Không thể mở lại màn hình nạp tiền vì booking không có flightId hợp lệ.'
+      });
+      setResumeHandledBookingId(queryBookingId);
+      return;
+    }
+
+    if (paymentQuery.isLoading) {
+      return;
+    }
+
+    const targetPayment = paymentQuery.data;
+    if (!targetPayment) {
+      setResumeWarning({
+        type: 'warning',
+        message: `Không tải được lệnh thanh toán của booking #${targetBooking.id}`,
+        description: 'Vui lòng thử lại sau hoặc liên hệ vận hành để kiểm tra payment intent.'
+      });
+      setResumeHandledBookingId(queryBookingId);
+      return;
+    }
+
+    setCheckout({
+      booking: targetBooking,
+      payment: targetPayment
+    });
+    setSelectedFlightId(targetBooking.flightId);
+    setSelectedSeatNumber(targetBooking.seatNumber || null);
+    setStep(3);
+    setResumeWarning(null);
+    setInlineAlert({
+      type: 'info',
+      message: `Đang nạp tiền cho booking #${targetBooking.id}`,
+      description: 'Bạn có thể thanh toán ngay bằng số dư ví nếu đủ tiền.'
+    });
+    setResumeHandledBookingId(queryBookingId);
+  }, [
+    bookingDeepLinkQuery.data,
+    bookingDeepLinkQuery.isLoading,
+    paymentQuery.data,
+    paymentQuery.isLoading,
+    queryBookingId,
+    resumeHandledBookingId
+  ]);
 
   const airportMap = useMemo<Record<number, AirportDto>>(
     () => Object.fromEntries((airportsQuery.data ?? []).map((item) => [item.id, item])) as Record<number, AirportDto>,
@@ -135,8 +265,16 @@ export const CreateBookingPage = () => {
     [seats, selectedSeatNumber]
   );
   const selectedFlightIsBookable = isFlightBookable(selectedFlight);
+  const currentPayment = paymentQuery.data || checkout?.payment || null;
 
   const seatGrid = useMemo(() => buildSeatGrid(seats), [seats]);
+  const paymentExpiresAt = currentPayment?.expiresAt ? new Date(currentPayment.expiresAt).valueOf() : null;
+  const countdownMs = paymentExpiresAt ? Math.max(0, paymentExpiresAt - countdownNow) : 0;
+  const countdownMinutes = Math.floor(countdownMs / 60000);
+  const countdownSeconds = Math.floor((countdownMs % 60000) / 1000);
+  const paymentWindowProgress = paymentExpiresAt
+    ? Math.max(0, Math.min(100, (countdownMs / (15 * 60 * 1000)) * 100))
+    : 0;
 
   useEffect(() => {
     if (selectedFlight && !selectedFlightIsBookable && step > 0) {
@@ -144,6 +282,34 @@ export const CreateBookingPage = () => {
       setSelectedSeatNumber(null);
     }
   }, [selectedFlight, selectedFlightIsBookable, step]);
+
+  useEffect(() => {
+    if (step !== 3 || !paymentExpiresAt) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setCountdownNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [step, paymentExpiresAt]);
+
+  useEffect(() => {
+    if (!currentPayment) {
+      return;
+    }
+
+    if (currentPayment.paymentStatus === PaymentStatus.EXPIRED) {
+      setInlineAlert({
+        type: 'warning',
+        message: 'Phiên thanh toán đã hết hạn',
+        description: 'Ghế sẽ được giải phóng và bạn cần tạo checkout mới nếu muốn tiếp tục.'
+      });
+    }
+  }, [currentPayment]);
 
   const seatColumns: ColumnsType<SeatDto> = [
     {
@@ -162,7 +328,7 @@ export const CreateBookingPage = () => {
     {
       title: 'Fare',
       key: 'price',
-      render: () => formatCurrency(selectedFlight?.price || 0)
+      render: (_, record) => formatCurrency(record.price, record.currency)
     }
   ];
 
@@ -177,20 +343,95 @@ export const CreateBookingPage = () => {
   const handleSubmitBooking = async () => {
     if (!selectedFlight || !passengerQuery.data?.id || !selectedFlightIsBookable) return;
 
-    const response = await createBookingMutation.mutateAsync({
-      flightId: selectedFlight.id,
-      description: description.trim() || 'N/A',
-      seatNumber: selectedSeatNumber || undefined
-    });
+    setInlineAlert(null);
+    setDuplicateBookingId(null);
 
-    const finalBooking = response?.id ? response : latestBookingsQuery.data?.data?.[0] || null;
-    if (!finalBooking) {
+    try {
+      const response = await createBookingMutation.mutateAsync({
+        payload: {
+          flightId: selectedFlight.id,
+          description: description.trim() || 'N/A',
+          seatNumber: selectedSeatNumber || undefined
+        },
+        idempotencyKey: createIdempotencyKey()
+      });
+
+      setCheckout(response);
+      setCreatedBooking(null);
+      setIsSyncingConfirmedBooking(false);
+      setSyncedPaymentId(null);
+      setStep(3);
+      setInlineAlert({
+        type: 'info',
+        message: 'Giữ chỗ thành công',
+        description: 'Ghế đã được giữ và checkout đang chờ bạn hoàn tất thanh toán.'
+      });
+    } catch (error) {
+      const appError = normalizeProblemError(error);
+      const existingBookingId = Number(appError.meta?.existingBookingId || 0);
+
+      if (existingBookingId > 0) {
+        setDuplicateBookingId(existingBookingId);
+      }
+    }
+  };
+
+  const waitForConfirmedBooking = async (bookingId: number): Promise<BookingDto | null> => {
+    let latestBooking: BookingDto | null = null;
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await bookingApi.getById(bookingId);
+      latestBooking = response.data;
+
+      if (latestBooking.bookingStatus === BookingStatus.CONFIRMED) {
+        return latestBooking;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    }
+
+    return latestBooking;
+  };
+
+  useEffect(() => {
+    if (step !== 3 || !checkout || !currentPayment) {
       return;
     }
 
-    setCreatedBooking(finalBooking);
-    setStep(3);
-  };
+    if (currentPayment.paymentStatus !== PaymentStatus.SUCCEEDED || isSyncingConfirmedBooking) {
+      return;
+    }
+
+    if (syncedPaymentId === currentPayment.id) {
+      return;
+    }
+
+    setIsSyncingConfirmedBooking(true);
+    setSyncedPaymentId(currentPayment.id);
+    setInlineAlert({
+      type: 'info',
+      message: 'Đã nhận thanh toán, đang đồng bộ trạng thái booking',
+      description: 'Hệ thống đang chờ sự kiện xác nhận từ payment service.'
+    });
+
+    void (async () => {
+      const syncedBooking = await waitForConfirmedBooking(checkout.booking.id);
+
+      if (syncedBooking?.bookingStatus === BookingStatus.CONFIRMED) {
+        setCreatedBooking(syncedBooking);
+        setStep(4);
+        setIsSyncingConfirmedBooking(false);
+        return;
+      }
+
+      setInlineAlert({
+        type: 'info',
+        message: 'Thanh toán đã thành công, đang chờ booking xác nhận',
+        description: 'Sự kiện xác nhận đang được đồng bộ. Bạn có thể thử kiểm tra lại ngay.'
+      });
+      setIsSyncingConfirmedBooking(false);
+    })();
+  }, [checkout, currentPayment, isSyncingConfirmedBooking, step, syncedPaymentId]);
 
   const renderFlightSelection = () => (
     <SectionCard title="Chọn chuyến bay" subtitle="Step 1 · Select a route with the right schedule and fare">
@@ -404,9 +645,25 @@ export const CreateBookingPage = () => {
               <Text type="secondary">
                 {`${selectedFlight.flightNumber} · ${formatDateLabel(selectedFlight.flightDate)} · ${formatScheduleStrip(selectedFlight.departureDate, selectedFlight.arriveDate)}`}
               </Text>
-              <Text strong>{formatCurrency(selectedFlight.price)}</Text>
+              <Text strong>{formatCurrency(selectedSeat?.price || selectedFlight.price, selectedSeat?.currency || 'VND')}</Text>
             </Space>
           </Card>
+        )}
+
+        {duplicateBookingId && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Bạn đã có booking đang hoạt động cho chuyến bay này"
+            description={
+              <Space wrap>
+                <Text type="secondary">{`Booking #${duplicateBookingId} đang chờ xử lý hoặc đã confirmed.`}</Text>
+                <Button type="link" onClick={() => navigate(`/bookings/${duplicateBookingId}`)}>
+                  Mở booking hiện có
+                </Button>
+              </Space>
+            }
+          />
         )}
 
         <Card className="app-surface" style={{ borderRadius: 20 }} title="Notes">
@@ -426,12 +683,131 @@ export const CreateBookingPage = () => {
             disabled={!passengerQuery.data?.id || !selectedFlight || !selectedFlightIsBookable}
             onClick={handleSubmitBooking}
           >
-            Đặt vé ngay
+            Tiếp tục thanh toán ví
           </Button>
         </Space>
       </Space>
     </SectionCard>
   );
+
+  const renderPaymentStep = () => {
+    if (!checkout) {
+      return <EmptyState title="Checkout missing" description="Không tìm thấy phiên checkout đang chờ thanh toán." />;
+    }
+
+    const payment = currentPayment || checkout.payment;
+    const paymentExpired = payment.paymentStatus === PaymentStatus.EXPIRED || countdownMs <= 0;
+    const isResumedCheckout = queryBookingId > 0 && checkout.booking.id === queryBookingId;
+    const walletBalance = Number(walletQuery.data?.balance || 0);
+    const walletCurrency = walletQuery.data?.currency || payment.currency;
+    const isWalletSufficient = walletBalance >= Number(payment.amount || 0);
+
+    return (
+      <SectionCard title="Thanh toán" subtitle="Step 4 · Confirm the locked amount before the hold expires">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {inlineAlert && (
+            <Alert
+              type={inlineAlert.type}
+              showIcon
+              message={inlineAlert.message}
+              description={inlineAlert.description}
+            />
+          )}
+
+          <Card className="app-surface" style={{ borderRadius: 20 }}>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <Text strong>Locked total</Text>
+              <Text style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(payment.amount, payment.currency)}</Text>
+              <Space wrap>
+                <StatusPill label={paymentStatusLabels[payment.paymentStatus]} tone={getPaymentStatusTone(payment.paymentStatus)} />
+                <StatusPill label={`Seat ${checkout.booking.seatNumber}`} tone="accent" subtle />
+                <StatusPill label={seatClassLabels[checkout.booking.seatClass]} tone={getSeatClassTone(checkout.booking.seatClass)} subtle />
+              </Space>
+            </Space>
+          </Card>
+
+          <Card className="app-surface" style={{ borderRadius: 20 }}>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <Text strong>Payment window</Text>
+              <Text type="secondary">{`Hết hạn sau ${String(countdownMinutes).padStart(2, '0')}:${String(countdownSeconds).padStart(2, '0')}`}</Text>
+              <Progress percent={paymentWindowProgress} showInfo={false} strokeColor="#1d4ed8" />
+            </Space>
+          </Card>
+
+          <Card className="app-surface" style={{ borderRadius: 20 }}>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <Text strong>Thanh toán bằng ví</Text>
+              <Text type="secondary">Booking sẽ được xác nhận ngay khi ví đủ tiền và thanh toán thành công.</Text>
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                <Text>{`Số dư ví hiện tại: ${formatCurrency(walletBalance, walletCurrency)}`}</Text>
+                <Text>{`Số tiền cần thanh toán: ${formatCurrency(payment.amount, payment.currency)}`}</Text>
+                <StatusPill
+                  label={isWalletSufficient ? 'Ví đủ tiền' : 'Ví không đủ tiền'}
+                  tone={isWalletSufficient ? 'success' : 'warning'}
+                  subtle
+                />
+              </Space>
+              {!isWalletSufficient && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="Số dư ví không đủ để thanh toán booking này"
+                  description="Vui lòng nạp thêm ví trước khi thanh toán."
+                />
+              )}
+            </Space>
+          </Card>
+
+          <Space wrap>
+            <Button
+              onClick={() => {
+                if (isResumedCheckout) {
+                  navigate(`/bookings/${checkout.booking.id}`);
+                  return;
+                }
+
+                setStep(2);
+              }}
+            >
+              {isResumedCheckout ? 'Về chi tiết booking' : 'Quay lại review'}
+            </Button>
+            <Button onClick={() => walletQuery.refetch()} loading={walletQuery.isFetching}>
+              Refresh ví
+            </Button>
+            {!isWalletSufficient ? (
+              <Button type="primary" onClick={() => navigate('/wallet')}>
+                Nạp ví
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                loading={payBookingWithWalletMutation.isPending}
+                disabled={paymentExpired || !checkout.payment.id}
+                onClick={async () => {
+                  if (!payment.id) {
+                    return;
+                  }
+
+                  await payBookingWithWalletMutation.mutateAsync({ paymentId: payment.id });
+                  setInlineAlert({
+                    type: 'info',
+                    message: 'Thanh toán ví thành công, đang đồng bộ booking',
+                    description: 'Hệ thống đang cập nhật trạng thái xác nhận booking.'
+                  });
+                  await paymentQuery.refetch();
+                }}
+              >
+                Thanh toán bằng ví
+              </Button>
+            )}
+            <Button onClick={() => paymentQuery.refetch()} disabled={!checkout.payment.id}>
+              Kiểm tra lại payment
+            </Button>
+          </Space>
+        </Space>
+      </SectionCard>
+    );
+  };
 
   const renderSuccessStep = () => {
     if (!createdBooking) {
@@ -453,13 +829,13 @@ export const CreateBookingPage = () => {
           subtitle={`Flight ${createdBooking.flightNumber} · Seat ${createdBooking.seatNumber} · Passenger ${createdBooking.passengerName}`}
           tags={
             <>
-              <StatusPill label="Confirmed" tone="success" />
-              <StatusPill label={formatCurrency(createdBooking.price)} tone="accent" />
+              <StatusPill label={bookingStatusLabels[createdBooking.bookingStatus]} tone="success" />
+              <StatusPill label={formatCurrency(createdBooking.price, createdBooking.currency)} tone="accent" />
             </>
           }
         />
 
-        <SectionCard title="Boarding pass" subtitle="Step 4 · Booking confirmation">
+        <SectionCard title="Boarding pass" subtitle="Step 5 · Booking confirmation">
           <BoardingPassCard
             bookingId={createdBooking.id}
             flightNumber={createdBooking.flightNumber}
@@ -483,9 +859,13 @@ export const CreateBookingPage = () => {
               size="large"
               onClick={() => {
                 setCreatedBooking(null);
+                setCheckout(null);
                 setStep(0);
                 setSelectedSeatNumber(null);
                 setDescription('');
+                setInlineAlert(null);
+                setIsSyncingConfirmedBooking(false);
+                setSyncedPaymentId(null);
               }}
             >
               Đặt thêm vé
@@ -499,25 +879,36 @@ export const CreateBookingPage = () => {
   return (
     <>
       <PageHeader
-        eyebrow={step === 3 ? 'Booking completed' : 'Checkout flow'}
-        title={step === 3 ? 'Đặt vé thành công' : 'Đặt vé mới'}
-        subtitle="Flow 4 bước với summary sidebar, seat selection trực quan và boarding pass ở bước hoàn tất."
+        eyebrow={step === 4 ? 'Booking completed' : 'Checkout flow'}
+        title={step === 4 ? 'Đặt vé thành công' : 'Đặt vé mới'}
+        subtitle="Flow 5 bước với seat-aware pricing, pending payment state và boarding pass chỉ hiện sau khi payment thành công."
         meta={selectedFlight ? `${selectedFlight.flightNumber} · ${formatDateLabel(selectedFlight.flightDate)}` : 'Select a flight to begin'}
       />
 
-      <SectionCard title="Booking steps" subtitle="Checkout-inspired flow for route, seat and confirmation">
+      <SectionCard title="Booking steps" subtitle="Checkout-inspired flow for route, seat, payment and confirmation">
         <Steps
           current={step}
           items={[
             { title: 'Chọn chuyến bay', description: 'Route & schedule', icon: <RocketOutlined /> },
             { title: 'Chọn ghế', description: 'Cabin & preference', icon: <TeamOutlined /> },
             { title: 'Xác nhận', description: 'Review & note', icon: <FileSearchOutlined /> },
+            { title: 'Thanh toán', description: 'Locked amount', icon: <FileSearchOutlined /> },
             { title: 'Hoàn tất', description: 'Boarding pass', icon: <CheckCircleOutlined /> }
           ]}
         />
       </SectionCard>
 
-      {step === 3 ? (
+      {resumeWarning && (
+        <Alert
+          type={resumeWarning.type}
+          showIcon
+          message={resumeWarning.message}
+          description={resumeWarning.description}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {step === 4 ? (
         renderSuccessStep()
       ) : (
         <Row gutter={[16, 16]} align="top">
@@ -525,6 +916,7 @@ export const CreateBookingPage = () => {
             {step === 0 && renderFlightSelection()}
             {step === 1 && renderSeatSelection()}
             {step === 2 && renderReviewStep()}
+            {step === 3 && renderPaymentStep()}
           </Col>
 
           <Col xs={24} lg={9} xl={8}>
@@ -542,7 +934,7 @@ export const CreateBookingPage = () => {
                       <Text className="page-eyebrow">Flow notes</Text>
                       <Text type="secondary">
                         {selectedSeat
-                          ? `Seat ${selectedSeat.seatNumber} selected · ${seatClassLabels[selectedSeat.seatClass]} / ${seatTypeLabels[selectedSeat.seatType]}`
+                          ? `Seat ${selectedSeat.seatNumber} selected · ${seatClassLabels[selectedSeat.seatClass]} / ${seatTypeLabels[selectedSeat.seatType]} · ${formatCurrency(selectedSeat.price, selectedSeat.currency)}`
                           : 'Seat selection pending'}
                       </Text>
                       <Text type="secondary">
@@ -550,6 +942,11 @@ export const CreateBookingPage = () => {
                           ? `Passenger linked · ${passengerQuery.data.name}`
                           : 'Passenger profile missing'}
                       </Text>
+                      {checkout?.payment && (
+                        <Text type="secondary">
+                          {`Payment ${paymentStatusLabels[(currentPayment || checkout.payment).paymentStatus]}`}
+                        </Text>
+                      )}
                     </Space>
                   </Card>
                 </Space>

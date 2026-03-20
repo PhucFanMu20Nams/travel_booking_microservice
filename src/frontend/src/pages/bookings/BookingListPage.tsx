@@ -17,11 +17,19 @@ import { AirportDto } from '@/types/airport.types';
 import { BookingDto } from '@/types/booking.types';
 import { PaginationParams } from '@/types/common.types';
 import { BookingStatus } from '@/types/enums';
-import { bookingStatusLabels, formatCurrency, formatDateTime } from '@utils/format';
+import {
+  bookingStatusLabels,
+  formatCurrency,
+  formatDateTime,
+  paymentStatusLabels,
+  refundStatusLabels
+} from '@utils/format';
 import {
   buildRouteDescriptor,
   formatQuerySyncLabel,
   getBookingStatusTone,
+  getPaymentStatusTone,
+  getRefundStatusTone,
   getLatestQueryTimestamp
 } from '@utils/presentation';
 
@@ -91,7 +99,7 @@ export const BookingListPage = () => {
         dataIndex: 'price',
         key: 'price',
         width: 140,
-        render: (value: number) => <Text strong>{formatCurrency(value)}</Text>
+        render: (value: number, record) => <Text strong>{formatCurrency(value, record.currency)}</Text>
       },
       {
         title: 'Trạng thái',
@@ -101,6 +109,28 @@ export const BookingListPage = () => {
         render: (value: BookingStatus) => (
           <StatusPill label={bookingStatusLabels[value]} tone={getBookingStatusTone(value)} subtle />
         )
+      },
+      {
+        title: 'Thanh toán',
+        key: 'payment',
+        width: 220,
+        render: (_, record) =>
+          record.paymentSummary ? (
+            <Space direction="vertical" size={4}>
+              <StatusPill
+                label={paymentStatusLabels[record.paymentSummary.paymentStatus]}
+                tone={getPaymentStatusTone(record.paymentSummary.paymentStatus)}
+                subtle
+              />
+              <StatusPill
+                label={refundStatusLabels[record.paymentSummary.refundStatus]}
+                tone={getRefundStatusTone(record.paymentSummary.refundStatus)}
+                subtle
+              />
+            </Space>
+          ) : (
+            <Text type="secondary">Legacy / no payment</Text>
+          )
       },
       {
         title: 'Ngày đặt',
@@ -116,7 +146,7 @@ export const BookingListPage = () => {
         render: (_, record) => (
           <Space size="small">
             <Button icon={<EyeOutlined />} onClick={() => navigate(`/bookings/${record.id}`)} />
-            {record.bookingStatus === BookingStatus.CONFIRMED && (
+            {[BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED].includes(record.bookingStatus) && (
               <Popconfirm
                 title="Hủy booking này?"
                 okText="Hủy booking"
