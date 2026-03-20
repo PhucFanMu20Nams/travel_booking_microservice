@@ -87,6 +87,9 @@ export const normalizeProblemError = (error: unknown): AppError => {
       code: payload.type || 'UNEXPECTED_ERROR',
       message: payload.title || fallbackMessage,
       detail: payload.detail,
+      meta: Object.fromEntries(
+        Object.entries(payload).filter(([key]) => !['type', 'title', 'status', 'detail', 'instance'].includes(key))
+      ),
       raw: error
     };
   }

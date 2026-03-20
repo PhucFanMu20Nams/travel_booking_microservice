@@ -1,5 +1,14 @@
 import dayjs from 'dayjs';
-import { BookingStatus, FlightStatus, PassengerType, Role, SeatClass, SeatType } from '@/types/enums';
+import {
+  BookingStatus,
+  FlightStatus,
+  PassengerType,
+  PaymentStatus,
+  RefundStatus,
+  Role,
+  SeatClass,
+  SeatType
+} from '@/types/enums';
 
 export const formatDateTime = (value?: string | Date | null, format = 'DD/MM/YYYY HH:mm') => {
   if (!value) return '-';
@@ -55,8 +64,25 @@ export const flightStatusColors: Record<FlightStatus, string> = {
 };
 
 export const bookingStatusLabels: Record<BookingStatus, string> = {
+  [BookingStatus.PENDING_PAYMENT]: 'Pending payment',
   [BookingStatus.CONFIRMED]: 'Confirmed',
+  [BookingStatus.EXPIRED]: 'Expired',
   [BookingStatus.CANCELED]: 'Canceled'
+};
+
+export const paymentStatusLabels: Record<PaymentStatus, string> = {
+  [PaymentStatus.PENDING]: 'Pending',
+  [PaymentStatus.PROCESSING]: 'Processing',
+  [PaymentStatus.SUCCEEDED]: 'Succeeded',
+  [PaymentStatus.FAILED]: 'Failed',
+  [PaymentStatus.EXPIRED]: 'Expired'
+};
+
+export const refundStatusLabels: Record<RefundStatus, string> = {
+  [RefundStatus.NONE]: 'No refund',
+  [RefundStatus.PENDING]: 'Refund pending',
+  [RefundStatus.SUCCEEDED]: 'Refunded',
+  [RefundStatus.FAILED]: 'Refund failed'
 };
 
 export const seatClassLabels: Record<SeatClass, string> = {

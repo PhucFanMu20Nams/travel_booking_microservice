@@ -2,7 +2,16 @@ import dayjs from 'dayjs';
 import { AirportDto } from '@/types/airport.types';
 import { BookingDto } from '@/types/booking.types';
 import { FlightDto } from '@/types/flight.types';
-import { BookingStatus, FlightStatus, PassengerType, Role, SeatClass, SeatType } from '@/types/enums';
+import {
+  BookingStatus,
+  FlightStatus,
+  PassengerType,
+  PaymentStatus,
+  RefundStatus,
+  Role,
+  SeatClass,
+  SeatType
+} from '@/types/enums';
 import { SeatDto } from '@/types/seat.types';
 
 type AirportLike = Pick<AirportDto, 'code' | 'name'> | undefined;
@@ -98,8 +107,12 @@ export const getFlightStatusTone = (status: FlightStatus): StatusTone => {
 
 export const getBookingStatusTone = (status: BookingStatus): StatusTone => {
   switch (status) {
+    case BookingStatus.PENDING_PAYMENT:
+      return 'warning';
     case BookingStatus.CONFIRMED:
       return 'success';
+    case BookingStatus.EXPIRED:
+      return 'neutral';
     case BookingStatus.CANCELED:
       return 'danger';
     default:
@@ -136,7 +149,7 @@ export const canCancelBooking = (
   booking?: Pick<BookingDto, 'bookingStatus'> | null,
   flight?: Pick<FlightDto, 'flightStatus'> | null
 ): boolean => {
-  if (!booking || booking.bookingStatus !== BookingStatus.CONFIRMED) {
+  if (!booking || ![BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED].includes(booking.bookingStatus)) {
     return false;
   }
 
@@ -145,6 +158,38 @@ export const canCancelBooking = (
   }
 
   return ![FlightStatus.COMPLETED, FlightStatus.FLYING].includes(flight.flightStatus);
+};
+
+export const getPaymentStatusTone = (status: PaymentStatus): StatusTone => {
+  switch (status) {
+    case PaymentStatus.PENDING:
+      return 'warning';
+    case PaymentStatus.PROCESSING:
+      return 'info';
+    case PaymentStatus.SUCCEEDED:
+      return 'success';
+    case PaymentStatus.FAILED:
+      return 'danger';
+    case PaymentStatus.EXPIRED:
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+};
+
+export const getRefundStatusTone = (status: RefundStatus): StatusTone => {
+  switch (status) {
+    case RefundStatus.NONE:
+      return 'neutral';
+    case RefundStatus.PENDING:
+      return 'warning';
+    case RefundStatus.SUCCEEDED:
+      return 'success';
+    case RefundStatus.FAILED:
+      return 'danger';
+    default:
+      return 'neutral';
+  }
 };
 
 export const getRoleTone = (role: Role): StatusTone => {

@@ -26,7 +26,9 @@ export default defineConfig({
       '/api/v1/airport': { target: 'http://localhost:3344', changeOrigin: true },
       '/api/v1/aircraft': { target: 'http://localhost:3344', changeOrigin: true },
       '/api/v1/passenger': { target: 'http://localhost:3355', changeOrigin: true },
-      '/api/v1/booking': { target: 'http://localhost:3366', changeOrigin: true }
+      '/api/v1/booking': { target: 'http://localhost:3366', changeOrigin: true },
+      '/api/v1/wallet': { target: 'http://localhost:3377', changeOrigin: true },
+      '/api/v1/payment': { target: 'http://localhost:3377', changeOrigin: true }
     }
   },
   test: {

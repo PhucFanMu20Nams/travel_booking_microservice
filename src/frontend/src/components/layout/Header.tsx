@@ -28,7 +28,10 @@ const routeLabelMap: Record<string, string> = {
   flights: 'Chuyến bay',
   seats: 'Ghế',
   passengers: 'Hành khách',
+  payments: 'Thanh toán',
+  wallet: 'Ví',
   bookings: 'Đặt vé',
+  reconcile: 'Duyệt nạp ví',
   login: 'Đăng nhập'
 };
 
@@ -40,7 +43,10 @@ const routeSubtitleMap: Record<string, string> = {
   flights: 'Flight schedules, routes, and seat orchestration',
   seats: 'Seat inventory and cabin availability',
   passengers: 'Passenger directory and travel profiles',
-  bookings: 'Booking ledger and purchase activity'
+  bookings: 'Booking ledger and purchase activity',
+  payments: 'Wallet payment and top-up operations',
+  wallet: 'Wallet balance and top-up requests',
+  reconcile: 'Manual wallet top-up approval operations'
 };
 
 export const Header = () => {

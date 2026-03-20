@@ -20,6 +20,8 @@ import { FlightFormPage } from '@pages/flights/FlightFormPage';
 import { SeatManagementPage } from '@pages/seats/SeatManagementPage';
 import { PassengerListPage } from '@pages/passengers/PassengerListPage';
 import { PassengerDetailPage } from '@pages/passengers/PassengerDetailPage';
+import { AdminPaymentReconcilePage } from '@pages/payments/AdminPaymentReconcilePage';
+import { WalletPage } from '@pages/payments/WalletPage';
 import { NotFoundPage } from '@pages/NotFoundPage';
 
 export default function App() {
@@ -39,6 +41,7 @@ export default function App() {
         { path: '/bookings', element: <BookingListPage /> },
         { path: '/bookings/create', element: <CreateBookingPage /> },
         { path: '/bookings/:id', element: <BookingDetailPage /> },
+        { path: '/wallet', element: <WalletPage /> },
         {
           element: <AdminRoute />,
           children: [
@@ -53,7 +56,8 @@ export default function App() {
             { path: '/flights/create', element: <FlightFormPage /> },
             { path: '/flights/:id/seats', element: <SeatManagementPage /> },
             { path: '/passengers', element: <PassengerListPage /> },
-            { path: '/passengers/:id', element: <PassengerDetailPage /> }
+            { path: '/passengers/:id', element: <PassengerDetailPage /> },
+            { path: '/payments/reconcile', element: <AdminPaymentReconcilePage /> }
           ]
         }
       ]

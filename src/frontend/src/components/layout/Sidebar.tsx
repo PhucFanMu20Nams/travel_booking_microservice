@@ -1,5 +1,6 @@
 import {
   BookOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
@@ -21,6 +22,7 @@ const getMenuItems = (isAdmin: boolean): ItemType[] => {
   const base: ItemType[] = [
     { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined /> },
     { key: '/flights', label: 'Chuyến bay', icon: <RocketOutlined /> },
+    { key: '/wallet', label: 'Ví của tôi', icon: <CreditCardOutlined /> },
     {
       key: 'bookings',
       label: 'Đặt vé',
@@ -43,7 +45,8 @@ const getMenuItems = (isAdmin: boolean): ItemType[] => {
         { key: '/users', label: 'Người dùng', icon: <UserOutlined /> },
         { key: '/passengers', label: 'Hành khách', icon: <TeamOutlined /> },
         { key: '/airports', label: 'Sân bay', icon: <EnvironmentOutlined /> },
-        { key: '/aircrafts', label: 'Máy bay', icon: <SendOutlined /> }
+        { key: '/aircrafts', label: 'Máy bay', icon: <SendOutlined /> },
+        { key: '/payments/reconcile', label: 'Duyệt nạp ví', icon: <CreditCardOutlined /> }
       ]
     } as ItemType
   );

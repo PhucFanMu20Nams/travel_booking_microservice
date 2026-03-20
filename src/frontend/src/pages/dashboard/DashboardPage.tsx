@@ -37,7 +37,7 @@ import { useGetAirports } from '@hooks/useAirports';
 import { useAuthStore } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { BookingDto } from '@/types/booking.types';
-import { FlightStatus } from '@/types/enums';
+import { BookingStatus, FlightStatus } from '@/types/enums';
 import { FlightDto } from '@/types/flight.types';
 import { flightStatusLabels, formatCurrency } from '@utils/format';
 import {
@@ -214,7 +214,11 @@ export const DashboardPage = () => {
   }, [timelineBookings]);
 
   const totalRevenue = useMemo(
-    () => timelineBookings.reduce((sum, booking) => sum + (booking.price || 0), 0),
+    () =>
+      timelineBookings.reduce(
+        (sum, booking) => sum + (booking.bookingStatus === BookingStatus.CONFIRMED ? booking.price || 0 : 0),
+        0
+      ),
     [timelineBookings]
   );
 
