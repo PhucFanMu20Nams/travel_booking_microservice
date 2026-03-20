@@ -1,12 +1,23 @@
 import { useAuthStore } from '@stores/auth.store';
 import { AircraftDto } from '@/types/aircraft.types';
 import { AirportDto } from '@/types/airport.types';
-import { BookingDto } from '@/types/booking.types';
+import { BookingCheckoutDto, BookingDto } from '@/types/booking.types';
 import { FlightDto } from '@/types/flight.types';
 import { PassengerDto } from '@/types/passenger.types';
+import { PaymentDto, PaymentSummaryDto } from '@/types/payment.types';
 import { SeatDto } from '@/types/seat.types';
 import { UserDto } from '@/types/user.types';
-import { BookingStatus, FlightStatus, PassengerType, Role, SeatClass, SeatType } from '@/types/enums';
+import {
+  BookingStatus,
+  FakePaymentScenario,
+  FlightStatus,
+  PassengerType,
+  PaymentStatus,
+  RefundStatus,
+  Role,
+  SeatClass,
+  SeatType
+} from '@/types/enums';
 
 const now = '2099-01-01T00:00:00.000Z';
 
@@ -60,9 +71,56 @@ export const makeSeat = (overrides: Partial<SeatDto> = {}): SeatDto => ({
   seatClass: SeatClass.BUSINESS,
   seatType: SeatType.WINDOW,
   flightId: 1,
+  price: 2625000,
+  currency: 'VND',
   isReserved: false,
   createdAt: now,
   updatedAt: now,
+  ...overrides
+});
+
+export const makePaymentSummary = (overrides: Partial<PaymentSummaryDto> = {}): PaymentSummaryDto => ({
+  id: 11,
+  bookingId: 1,
+  userId: 42,
+  amount: 2625000,
+  currency: 'VND',
+  paymentCode: 'TBK-1',
+  paymentStatus: PaymentStatus.SUCCEEDED,
+  refundStatus: RefundStatus.NONE,
+  expiresAt: '2099-03-10T07:15:00.000Z',
+  completedAt: '2099-03-10T07:02:00.000Z',
+  refundedAt: null,
+  providerTxnId: null,
+  reconciledAt: null,
+  reconciledBy: null,
+  transferInstruction: {
+    bankName: 'Vietcombank',
+    accountName: 'TRAVEL BOOKING COMPANY',
+    accountNumber: '1029384756',
+    amount: 2625000,
+    currency: 'VND',
+    content: 'TBK-1',
+    expiresAt: '2099-03-10T07:15:00.000Z'
+  },
+  createdAt: now,
+  updatedAt: now,
+  ...overrides
+});
+
+export const makePayment = (overrides: Partial<PaymentDto> = {}): PaymentDto => ({
+  ...makePaymentSummary(),
+  attempts: [
+    {
+      id: 1,
+      paymentId: 11,
+      scenario: FakePaymentScenario.SUCCESS,
+      paymentStatus: PaymentStatus.SUCCEEDED,
+      createdAt: now,
+      updatedAt: now
+    }
+  ],
+  refunds: [],
   ...overrides
 });
 
@@ -76,14 +134,31 @@ export const makeBooking = (overrides: Partial<BookingDto> = {}): BookingDto => 
   departureAirportId: 1,
   arriveAirportId: 2,
   flightDate: '2099-03-10T00:00:00.000Z',
-  price: 1500000,
+  price: 2625000,
+  currency: 'VND',
   description: 'Window seat',
   seatNumber: '1A',
+  seatClass: SeatClass.BUSINESS,
   passengerName: 'Nguyen Van A',
   bookingStatus: BookingStatus.CONFIRMED,
+  paymentId: 11,
+  paymentExpiresAt: '2099-03-10T07:15:00.000Z',
+  confirmedAt: '2099-03-10T07:02:00.000Z',
+  expiredAt: null,
+  paymentSummary: makePaymentSummary(),
   createdAt: now,
   updatedAt: now,
   canceledAt: null,
+  ...overrides
+});
+
+export const makeBookingCheckout = (
+  overrides: Partial<BookingCheckoutDto> = {},
+  bookingOverrides: Partial<BookingDto> = {},
+  paymentOverrides: Partial<PaymentDto> = {}
+): BookingCheckoutDto => ({
+  booking: makeBooking(bookingOverrides),
+  payment: makePayment(paymentOverrides),
   ...overrides
 });
 

@@ -17,7 +17,14 @@ describe('presentation booking rules', () => {
     expect(isFlightBookable({ flightStatus: FlightStatus.SCHEDULED, departureDate: 'not-a-date' })).toBe(false);
   });
 
-  it('prevents cancellation for non-confirmed bookings or active/completed flights', () => {
+  it('allows cancellation for active bookings until the flight is flying/completed', () => {
+    expect(
+      canCancelBooking(
+        { bookingStatus: BookingStatus.PENDING_PAYMENT },
+        { flightStatus: FlightStatus.SCHEDULED }
+      )
+    ).toBe(true);
+
     expect(
       canCancelBooking(
         { bookingStatus: BookingStatus.CONFIRMED },
@@ -41,7 +48,7 @@ describe('presentation booking rules', () => {
 
     expect(
       canCancelBooking(
-        { bookingStatus: BookingStatus.CANCELED },
+        { bookingStatus: BookingStatus.EXPIRED },
         { flightStatus: FlightStatus.SCHEDULED }
       )
     ).toBe(false);

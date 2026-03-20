@@ -1,11 +1,13 @@
-import { screen } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BookingDetailPage } from '@pages/bookings/BookingDetailPage';
 import { BookingListPage } from '@pages/bookings/BookingListPage';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { server } from '@/test/msw/server';
-import { renderWithRoute } from '@/test/utils';
+import { createTestQueryClient, renderWithRoute } from '@/test/utils';
 import { aircrafts, airports, makeBooking, makeFlight, setAuthenticatedUser } from '@/test/frontend.fixtures';
 import { BookingStatus, FlightStatus } from '@/types/enums';
 
@@ -107,10 +109,51 @@ describe('booking status and cancellation flows', () => {
     renderWithRoute(<BookingDetailPage />, { route: '/bookings/7', path: '/bookings/:id' });
 
     expect((await screen.findAllByText('Confirmed')).length).toBeGreaterThanOrEqual(1);
-    await user.click(screen.getByRole('button', { name: 'Hủy booking' }));
+    await user.click(await screen.findByRole('button', { name: 'Hủy booking' }));
 
     expect((await screen.findAllByText('Canceled')).length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByText('01/03/2099 09:00')).toBeInTheDocument();
+    expect((await screen.findAllByText('01/03/2099 09:00')).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('button', { name: 'Hủy booking' })).not.toBeInTheDocument();
+  });
+
+  it('shows wallet payment button for pending booking and navigates to create page with bookingId', async () => {
+    const user = userEvent.setup();
+    const pendingBooking = makeBooking({
+      id: 9,
+      bookingStatus: BookingStatus.PENDING_PAYMENT,
+      paymentId: 901,
+      paymentSummary: null
+    });
+    const flight = makeFlight({
+      id: 1,
+      flightStatus: FlightStatus.SCHEDULED
+    });
+
+    const LocationProbe = () => {
+      const location = useLocation();
+
+      return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
+    };
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/aircraft/get-all', () => HttpResponse.json(aircrafts)),
+      http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBooking)),
+      http.get('/api/v1/flight/get-by-id', () => HttpResponse.json(flight))
+    );
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter initialEntries={['/bookings/9']}>
+          <Routes>
+            <Route path="/bookings/:id" element={<BookingDetailPage />} />
+            <Route path="/bookings/create" element={<LocationProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Thanh toán ví' }));
+    expect(await screen.findByTestId('location-probe')).toHaveTextContent('/bookings/create?bookingId=9');
   });
 });
