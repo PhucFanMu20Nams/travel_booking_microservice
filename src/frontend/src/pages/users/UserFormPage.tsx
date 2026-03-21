@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FormActionsBar } from '@components/common/FormActionsBar';
+import { PageSkeleton } from '@components/common/PageSkeleton';
 import { FormSection } from '@components/common/FormSection';
 import { PageHeader } from '@components/common/PageHeader';
 import { SectionCard } from '@components/common/SectionCard';
@@ -73,6 +74,10 @@ export const UserFormPage = () => {
     }
     navigate('/users');
   };
+
+  if (isEdit && userQuery.isLoading && !userQuery.data) {
+    return <PageSkeleton variant="detail" />;
+  }
 
   return (
     <>
@@ -181,7 +186,7 @@ export const UserFormPage = () => {
               <Button
                 type="primary"
                 htmlType="submit"
-                loading={createMutation.isPending || updateMutation.isPending || userQuery.isLoading}
+                loading={createMutation.isPending || updateMutation.isPending}
               >
                 {isEdit ? 'Lưu thay đổi' : 'Tạo mới'}
               </Button>

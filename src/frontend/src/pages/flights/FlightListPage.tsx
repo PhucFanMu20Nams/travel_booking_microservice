@@ -5,7 +5,7 @@ import {
   ReloadOutlined,
   ShoppingCartOutlined
 } from '@ant-design/icons';
-import { Button, Grid, Select, Space, Typography } from 'antd';
+import { Button, Select, Space, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { SorterResult } from 'antd/es/table/interface';
 import { useMemo, useState } from 'react';
@@ -22,6 +22,7 @@ import { StatusPill } from '@components/common/StatusPill';
 import { useGetAircrafts } from '@hooks/useAircrafts';
 import { useGetAirports } from '@hooks/useAirports';
 import { useGetFlights } from '@hooks/useFlights';
+import { useIsDesktop } from '@hooks/useResponsive';
 import { useAuthStore } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { PaginationParams } from '@/types/common.types';
@@ -42,7 +43,7 @@ const { Text } = Typography;
 
 export const FlightListPage = () => {
   const navigate = useNavigate();
-  const screens = Grid.useBreakpoint();
+  const isDesktop = useIsDesktop();
   const { isAdmin } = useAuthStore();
   const [params, setParams] = useState<PaginationParams>({
     page: 1,
@@ -280,7 +281,7 @@ export const FlightListPage = () => {
             </Button>
           }
         />
-      ) : !screens.lg ? (
+      ) : !isDesktop ? (
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           {tableData.map((flight) => (
             <FlightCard

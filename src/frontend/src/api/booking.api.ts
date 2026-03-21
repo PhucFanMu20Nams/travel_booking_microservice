@@ -2,8 +2,12 @@ import apiClient from '@api/axios-instance';
 import { ApiPagedResult, PaginationParams } from '@/types/common.types';
 import { BookingCheckoutDto, BookingDto, CreateBookingRequest } from '@/types/booking.types';
 
+export interface GetBookingsParams extends PaginationParams {
+  includePaymentSummary?: boolean;
+}
+
 export const bookingApi = {
-  getAll: (params: PaginationParams) =>
+  getAll: (params: GetBookingsParams) =>
     apiClient.get<ApiPagedResult<BookingDto[]>>('/api/v1/booking/get-all', { params }),
   getById: (id: number) => apiClient.get<BookingDto>('/api/v1/booking/get-by-id', { params: { id } }),
   create: (data: CreateBookingRequest, idempotencyKey: string) =>

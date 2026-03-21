@@ -27,8 +27,8 @@ import { flightApi } from '@api/flight.api';
 import { passengerApi } from '@api/passenger.api';
 import { userApi } from '@api/user.api';
 import { RouteBadge } from '@components/common/RouteBadge';
+import { DashboardMetricCard } from '@pages/dashboard/DashboardMetricCard';
 import { EntityHero } from '@components/common/EntityHero';
-import { MetricCard } from '@components/common/MetricCard';
 import { PageHeader } from '@components/common/PageHeader';
 import { QueryStatusStrip } from '@components/common/QueryStatusStrip';
 import { SectionCard } from '@components/common/SectionCard';
@@ -40,6 +40,7 @@ import { BookingDto } from '@/types/booking.types';
 import { BookingStatus, FlightStatus } from '@/types/enums';
 import { FlightDto } from '@/types/flight.types';
 import { flightStatusLabels, formatCurrency } from '@utils/format';
+import { QUERY_STALE_TIME_MS } from '@utils/constants';
 import {
   buildRouteDescriptor,
   formatDateLabel,
@@ -49,6 +50,70 @@ import {
 } from '@utils/presentation';
 
 const { Text } = Typography;
+const DASHBOARD_FLIGHTS_PAGE_SIZE = 100;
+const DASHBOARD_BOOKINGS_PAGE_SIZE = 100;
+
+type DashboardQueryState = 'ok' | 'loading' | 'error' | 'idle';
+
+const resolveQueryState = (
+  query: { isError: boolean; isLoading: boolean; isSuccess: boolean },
+  enabled = true
+): DashboardQueryState => {
+  if (!enabled) {
+    return 'idle';
+  }
+
+  if (query.isError) {
+    return 'error';
+  }
+
+  if (query.isLoading) {
+    return 'loading';
+  }
+
+  if (query.isSuccess) {
+    return 'ok';
+  }
+
+  return 'idle';
+};
+
+const getFlightSortTimestamp = (flight: Pick<FlightDto, 'departureDate' | 'flightDate'>): number | null => {
+  const departureTimestamp = new Date(flight.departureDate).valueOf();
+  if (!Number.isNaN(departureTimestamp)) {
+    return departureTimestamp;
+  }
+
+  const flightDateTimestamp = new Date(flight.flightDate).valueOf();
+  return Number.isNaN(flightDateTimestamp) ? null : flightDateTimestamp;
+};
+
+const formatDashboardCompactCurrency = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '-';
+  }
+
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  const units: Array<{ minValue: number; suffix: 'K' | 'M' | 'B' }> = [
+    { minValue: 1_000_000_000, suffix: 'B' },
+    { minValue: 1_000_000, suffix: 'M' },
+    { minValue: 1_000, suffix: 'K' }
+  ];
+
+  const selectedUnit = units.find((unit) => absValue >= unit.minValue);
+  if (!selectedUnit) {
+    return `${sign}${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(absValue)} đ`;
+  }
+
+  const normalized = absValue / selectedUnit.minValue;
+  const formatted = new Intl.NumberFormat('vi-VN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: normalized >= 100 ? 0 : 1
+  }).format(normalized);
+
+  return `${sign}${formatted}${selectedUnit.suffix} đ`;
+};
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
@@ -63,23 +128,8 @@ export const DashboardPage = () => {
       const response = await userApi.getAll({ page: 1, pageSize: 1 });
       return response.data.total;
     },
-    enabled: adminMode
-  });
-
-  const flightsCountQuery = useQuery({
-    queryKey: ['dashboard', 'count', 'flights'],
-    queryFn: async () => {
-      const response = await flightApi.getAll({ page: 1, pageSize: 1, orderBy: 'flightDate', order: 'ASC' });
-      return response.data.total;
-    }
-  });
-
-  const bookingsCountQuery = useQuery({
-    queryKey: ['dashboard', 'count', 'bookings'],
-    queryFn: async () => {
-      const response = await bookingApi.getAll({ page: 1, pageSize: 1, orderBy: 'id', order: 'DESC' });
-      return response.data.total;
-    }
+    enabled: adminMode,
+    staleTime: QUERY_STALE_TIME_MS
   });
 
   const passengersCountQuery = useQuery({
@@ -88,62 +138,75 @@ export const DashboardPage = () => {
       const response = await passengerApi.getAll({ page: 1, pageSize: 1 });
       return response.data.total;
     },
-    enabled: adminMode
+    enabled: adminMode,
+    staleTime: QUERY_STALE_TIME_MS
   });
 
-  const recentBookingsQuery = useQuery({
-    queryKey: ['dashboard', 'recentBookings'],
+  const flightsSnapshotQuery = useQuery({
+    queryKey: ['dashboard', 'snapshot', 'flights'],
     queryFn: async () => {
-      const response = await bookingApi.getAll({ page: 1, pageSize: 5, orderBy: 'id', order: 'DESC' });
-      return response.data.result || [];
-    }
-  });
-
-  const upcomingFlightsQuery = useQuery({
-    queryKey: ['dashboard', 'upcomingFlights'],
-    queryFn: async () => {
-      const response = await flightApi.getAll({ page: 1, pageSize: 5, orderBy: 'flightDate', order: 'ASC' });
-      return response.data.result || [];
-    }
-  });
-
-  const allFlightsQuery = useQuery({
-    queryKey: ['dashboard', 'allFlights'],
-    queryFn: async () => {
-      const response = await flightApi.getAll({ page: 1, pageSize: 100, orderBy: 'flightDate', order: 'ASC' });
-      return response.data.result || [];
+      const response = await flightApi.getAll({
+        page: 1,
+        pageSize: DASHBOARD_FLIGHTS_PAGE_SIZE,
+        orderBy: 'flightDate',
+        order: 'ASC'
+      });
+      return {
+        total: response.data.total,
+        flights: (response.data.result || []) as FlightDto[]
+      };
     },
-    enabled: adminMode
+    staleTime: QUERY_STALE_TIME_MS
   });
 
-  const bookingTimelineQuery = useQuery({
-    queryKey: ['dashboard', 'bookingTimeline'],
+  const bookingsSnapshotQuery = useQuery({
+    queryKey: ['dashboard', 'snapshot', 'bookings'],
     queryFn: async () => {
-      const response = await bookingApi.getAll({ page: 1, pageSize: 100, orderBy: 'id', order: 'DESC' });
-      return response.data.result || [];
-    }
+      const response = await bookingApi.getAll({
+        page: 1,
+        pageSize: DASHBOARD_BOOKINGS_PAGE_SIZE,
+        orderBy: 'id',
+        order: 'DESC',
+        includePaymentSummary: false
+      });
+      return {
+        total: response.data.total,
+        bookings: (response.data.result || []) as BookingDto[]
+      };
+    },
+    staleTime: QUERY_STALE_TIME_MS
   });
+
+  const flights = useMemo(() => flightsSnapshotQuery.data?.flights || [], [flightsSnapshotQuery.data?.flights]);
 
   const airportMap = useMemo(
     () => Object.fromEntries((airportsQuery.data || []).map((airport) => [airport.id, airport])) as Record<number, AirportDto>,
     [airportsQuery.data]
   );
 
-  const recentBookings = recentBookingsQuery.data || [];
+  const timelineBookings = useMemo(
+    () => bookingsSnapshotQuery.data?.bookings || [],
+    [bookingsSnapshotQuery.data?.bookings]
+  );
 
-  const timelineBookings = useMemo(() => bookingTimelineQuery.data || [], [bookingTimelineQuery.data]);
+  const recentBookings = useMemo(() => timelineBookings.slice(0, 5), [timelineBookings]);
 
   const upcomingFlights = useMemo(() => {
-    const data = (upcomingFlightsQuery.data || []) as FlightDto[];
     const now = Date.now();
-    return [...data]
-      .filter((item) => new Date(item.flightDate).valueOf() >= now)
-      .sort((a, b) => new Date(a.flightDate).valueOf() - new Date(b.flightDate).valueOf())
+    return [...flights]
+      .filter((item) => {
+        const timestamp = getFlightSortTimestamp(item);
+        return typeof timestamp === 'number' && timestamp >= now;
+      })
+      .sort((a, b) => {
+        const first = getFlightSortTimestamp(a) ?? Number.POSITIVE_INFINITY;
+        const second = getFlightSortTimestamp(b) ?? Number.POSITIVE_INFINITY;
+        return first - second;
+      })
       .slice(0, 5);
-  }, [upcomingFlightsQuery.data]);
+  }, [flights]);
 
   const statusData = useMemo(() => {
-    const flights = (allFlightsQuery.data || []) as FlightDto[];
     const grouped = flights.reduce<Record<number, number>>((acc, flight) => {
       acc[flight.flightStatus] = (acc[flight.flightStatus] || 0) + 1;
       return acc;
@@ -166,7 +229,7 @@ export const DashboardPage = () => {
         color: statusColor[status as FlightStatus]
       }))
       .filter((item) => item.value > 0);
-  }, [allFlightsQuery.data]);
+  }, [flights]);
 
   const bookingTimelineData = useMemo(() => {
     const today = new Date();
@@ -197,7 +260,7 @@ export const DashboardPage = () => {
     }
 
     const indexByKey = new Map(buckets.map((bucket, index) => [bucket.key, index]));
-    for (const booking of timelineBookings as BookingDto[]) {
+    for (const booking of timelineBookings) {
       const created = new Date(booking.createdAt);
       created.setHours(0, 0, 0, 0);
       const key = dateKey(created);
@@ -225,42 +288,40 @@ export const DashboardPage = () => {
   const lastUpdatedAt = getLatestQueryTimestamp(
     airportsQuery.dataUpdatedAt,
     usersCountQuery.dataUpdatedAt,
-    flightsCountQuery.dataUpdatedAt,
-    bookingsCountQuery.dataUpdatedAt,
-    passengersCountQuery.dataUpdatedAt,
-    recentBookingsQuery.dataUpdatedAt,
-    upcomingFlightsQuery.dataUpdatedAt,
-    allFlightsQuery.dataUpdatedAt,
-    bookingTimelineQuery.dataUpdatedAt
+    flightsSnapshotQuery.dataUpdatedAt,
+    bookingsSnapshotQuery.dataUpdatedAt,
+    passengersCountQuery.dataUpdatedAt
   );
+
+  const analyticsState: DashboardQueryState =
+    flightsSnapshotQuery.isError || bookingsSnapshotQuery.isError
+      ? 'error'
+      : flightsSnapshotQuery.isLoading || bookingsSnapshotQuery.isLoading
+        ? 'loading'
+        : flightsSnapshotQuery.isSuccess && bookingsSnapshotQuery.isSuccess
+          ? 'ok'
+          : 'idle';
 
   const queryItems = [
     {
       label: 'Identity',
-      state: usersCountQuery.isError ? 'error' : usersCountQuery.isLoading ? 'loading' : usersCountQuery.data ? 'ok' : 'idle'
+      state: resolveQueryState(usersCountQuery, adminMode)
     },
     {
       label: 'Flights',
-      state: flightsCountQuery.isError ? 'error' : flightsCountQuery.isLoading ? 'loading' : flightsCountQuery.data ? 'ok' : 'idle'
+      state: resolveQueryState(flightsSnapshotQuery)
     },
     {
       label: 'Bookings',
-      state: bookingsCountQuery.isError ? 'error' : bookingsCountQuery.isLoading ? 'loading' : bookingsCountQuery.data ? 'ok' : 'idle'
+      state: resolveQueryState(bookingsSnapshotQuery)
     },
     {
       label: 'Passengers',
-      state: passengersCountQuery.isError ? 'error' : passengersCountQuery.isLoading ? 'loading' : passengersCountQuery.data ? 'ok' : 'idle'
+      state: resolveQueryState(passengersCountQuery, adminMode)
     },
     {
       label: 'Analytics',
-      state:
-        allFlightsQuery.isError || bookingTimelineQuery.isError
-          ? 'error'
-          : allFlightsQuery.isLoading || bookingTimelineQuery.isLoading
-            ? 'loading'
-            : allFlightsQuery.data || bookingTimelineQuery.data
-              ? 'ok'
-              : 'idle'
+      state: analyticsState
     }
   ] as const;
 
@@ -303,53 +364,48 @@ export const DashboardPage = () => {
 
       {adminMode ? (
         <>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} xl={4}>
-              <MetricCard
-                label="Users"
-                value={usersCountQuery.data || 0}
-                caption="Identity roster available for role-based access."
-                icon={<UserOutlined />}
-                accent="#0f6cbd"
-              />
-            </Col>
-            <Col xs={24} sm={12} xl={4}>
-              <MetricCard
-                label="Flights"
-                value={flightsCountQuery.data || 0}
-                caption="Current flight records ready for route and seat operations."
-                icon={<RocketOutlined />}
-                accent="#13908c"
-              />
-            </Col>
-            <Col xs={24} sm={12} xl={4}>
-              <MetricCard
-                label="Bookings"
-                value={bookingsCountQuery.data || 0}
-                caption="Recent booking transactions across the booking service."
-                icon={<BookOutlined />}
-                accent="#d97706"
-              />
-            </Col>
-            <Col xs={24} sm={12} xl={4}>
-              <MetricCard
-                label="Passengers"
-                value={passengersCountQuery.data || 0}
-                caption="Passenger profiles currently available for booking linkage."
-                icon={<TeamOutlined />}
-                accent="#7c3aed"
-              />
-            </Col>
-            <Col xs={24} sm={12} xl={4}>
-              <MetricCard
-                label="Revenue"
-                value={formatCurrency(totalRevenue)}
-                caption="Total booking revenue from recent dashboard feed."
-                icon={<DollarCircleOutlined />}
-                accent="#059669"
-              />
-            </Col>
-          </Row>
+          <div className="dashboard-metrics-grid" data-testid="dashboard-metrics-grid">
+            <DashboardMetricCard
+              testId="dashboard-metric-users"
+              label="Users"
+              value={usersCountQuery.data || 0}
+              caption="Identity roster available for role-based access."
+              icon={<UserOutlined />}
+              accent="#0f6cbd"
+            />
+            <DashboardMetricCard
+              testId="dashboard-metric-flights"
+              label="Flights"
+              value={flightsSnapshotQuery.data?.total || 0}
+              caption="Current flight records ready for route and seat operations."
+              icon={<RocketOutlined />}
+              accent="#13908c"
+            />
+            <DashboardMetricCard
+              testId="dashboard-metric-bookings"
+              label="Bookings"
+              value={bookingsSnapshotQuery.data?.total || 0}
+              caption="Recent booking transactions across the booking service."
+              icon={<BookOutlined />}
+              accent="#d97706"
+            />
+            <DashboardMetricCard
+              testId="dashboard-metric-passengers"
+              label="Passengers"
+              value={passengersCountQuery.data || 0}
+              caption="Passenger profiles currently available for booking linkage."
+              icon={<TeamOutlined />}
+              accent="#7c3aed"
+            />
+            <DashboardMetricCard
+              testId="dashboard-metric-revenue"
+              label="Revenue"
+              value={formatDashboardCompactCurrency(totalRevenue)}
+              caption="Total booking revenue from recent dashboard feed."
+              icon={<DollarCircleOutlined />}
+              accent="#059669"
+            />
+          </div>
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={10}>
@@ -515,18 +571,18 @@ export const DashboardPage = () => {
         <>
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
-              <MetricCard
+              <DashboardMetricCard
                 label="Bookings"
-                value={bookingsCountQuery.data || 0}
+                value={bookingsSnapshotQuery.data?.total || 0}
                 caption="Booking records currently reachable from the backend."
                 icon={<BookOutlined />}
                 accent="#0f6cbd"
               />
             </Col>
             <Col xs={24} md={12}>
-              <MetricCard
+              <DashboardMetricCard
                 label="Flights"
-                value={flightsCountQuery.data || 0}
+                value={flightsSnapshotQuery.data?.total || 0}
                 caption="Available flight records you can browse and book from here."
                 icon={<RocketOutlined />}
                 accent="#13908c"
