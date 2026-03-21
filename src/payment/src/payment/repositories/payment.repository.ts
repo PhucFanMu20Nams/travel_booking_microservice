@@ -9,6 +9,7 @@ export interface IPaymentRepository {
   createPaymentIntent(payment: PaymentIntent): Promise<PaymentIntent>;
   updatePaymentIntent(payment: PaymentIntent): Promise<PaymentIntent>;
   findPaymentById(id: number): Promise<PaymentIntent>;
+  findPaymentSummariesByIds(ids: number[], userId?: number): Promise<PaymentIntent[]>;
   findPaymentByBookingId(bookingId: number): Promise<PaymentIntent>;
   findPaymentByCode(paymentCode: string): Promise<PaymentIntent>;
   findPaymentByProviderTxnId(providerTxnId: string): Promise<PaymentIntent>;
@@ -40,6 +41,27 @@ export class PaymentRepository implements IPaymentRepository {
     return await this.paymentIntentRepository.findOne({
       where: { id },
       relations: ['attempts', 'refunds']
+    });
+  }
+
+  async findPaymentSummariesByIds(ids: number[], userId?: number): Promise<PaymentIntent[]> {
+    if (!ids.length) {
+      return [];
+    }
+
+    if (typeof userId === 'number') {
+      return await this.paymentIntentRepository.find({
+        where: {
+          id: In(ids),
+          userId
+        }
+      });
+    }
+
+    return await this.paymentIntentRepository.find({
+      where: {
+        id: In(ids)
+      }
     });
   }
 

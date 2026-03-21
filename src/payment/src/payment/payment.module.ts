@@ -35,6 +35,10 @@ import {
   GetPaymentByBookingIdController,
   GetPaymentByBookingIdHandler
 } from '@/payment/features/v1/get-payment-by-booking-id/get-payment-by-booking-id';
+import {
+  GetPaymentSummariesByIdsController,
+  GetPaymentSummariesByIdsHandler
+} from '@/payment/features/v1/get-payment-summaries-by-ids/get-payment-summaries-by-ids';
 import { PaymentRefundRequestedConsumerHandler } from '@/payment/consumers/payment-refund-requested.consumer';
 import { PaymentExpiryScheduler } from '@/payment/scheduler/payment-expiry.scheduler';
 import {
@@ -69,6 +73,7 @@ import {
     ManualReconcilePaymentController,
     GetPaymentByIdController,
     GetPaymentByBookingIdController,
+    GetPaymentSummariesByIdsController,
     WalletController
   ],
   providers: [
@@ -77,6 +82,7 @@ import {
     ManualReconcilePaymentHandler,
     GetPaymentByIdHandler,
     GetPaymentByBookingIdHandler,
+    GetPaymentSummariesByIdsHandler,
     GetMyWalletHandler,
     CreateWalletTopupRequestHandler,
     GetMyWalletTopupRequestsHandler,
