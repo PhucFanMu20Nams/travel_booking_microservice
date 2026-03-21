@@ -30,7 +30,10 @@ export const WalletPage = () => {
   const walletQuery = useGetWalletMe(true);
   const myTopupsQuery = useGetMyWalletTopupRequests(true);
   const createTopupMutation = useCreateWalletTopupRequest();
-  const topupRequests = Array.isArray(myTopupsQuery.data) ? myTopupsQuery.data : [];
+  const topupRequests = useMemo(
+    () => (Array.isArray(myTopupsQuery.data) ? myTopupsQuery.data : []),
+    [myTopupsQuery.data]
+  );
   const walletError = walletQuery.isError ? normalizeProblemError(walletQuery.error) : null;
   const topupsError = myTopupsQuery.isError ? normalizeProblemError(myTopupsQuery.error) : null;
   const hasWalletDataError = Boolean(walletError || topupsError);

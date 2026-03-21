@@ -42,7 +42,7 @@ export const AdminPaymentReconcilePage = () => {
   const approveMutation = useApproveWalletTopupRequest();
   const rejectMutation = useRejectWalletTopupRequest();
 
-  const requests = topupRequestsQuery.data || [];
+  const requests = useMemo(() => topupRequestsQuery.data || [], [topupRequestsQuery.data]);
 
   const pendingCount = useMemo(
     () => requests.filter((request) => request.status === WalletTopupRequestStatus.PENDING).length,
