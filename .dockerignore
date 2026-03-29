@@ -7,5 +7,11 @@
 **/dist
 **/coverage
 **/*.log
-src/frontend/node_modules
-src/frontend/dist
+docs
+docs/**
+src/frontend
+src/frontend/**
+src/**/test
+src/**/test/**
+src/**/*.spec.*
+src/**/.env*

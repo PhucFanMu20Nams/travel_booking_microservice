@@ -103,6 +103,8 @@ fabric.properties
 .env
 .env.*
 !.env.example
+!src/**/.env.docker
+!src/**/.env.rds
 
 # Editor-based Rest Client
 .idea/httpRequests
