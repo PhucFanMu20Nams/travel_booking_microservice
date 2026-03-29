@@ -1,6 +1,6 @@
 import { LoggerService, LogLevel } from '@nestjs/common';
 export declare class OtelLogger implements LoggerService {
-    private readonly nestLogger;
+    private readonly consoleLogger;
     debug(message: any, ...optionalParams: any[]): void;
     verbose(message: any, ...optionalParams: any[]): void;
     log(message: any, ...optionalParams: any[]): void;

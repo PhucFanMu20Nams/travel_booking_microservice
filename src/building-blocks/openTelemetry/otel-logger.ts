@@ -1,11 +1,11 @@
-import { Injectable, Logger, LoggerService, LogLevel } from '@nestjs/common';
+import { Injectable, ConsoleLogger, LoggerService, LogLevel } from '@nestjs/common';
 import { SeverityNumber } from '@opentelemetry/api-logs';
 import { logs } from '@opentelemetry/api-logs';
 import configs from '../configs/configs';
 
 @Injectable()
 export class OtelLogger implements LoggerService {
-  private readonly nestLogger = new Logger();
+  private readonly consoleLogger = new ConsoleLogger('OtelLogger');
 
   debug(message: any, ...optionalParams: any[]): void {
     this.logWithOtel(SeverityNumber.DEBUG, 'DEBUG', message, optionalParams);
@@ -47,22 +47,22 @@ export class OtelLogger implements LoggerService {
     // Use Nest Logger for console output
     switch (severityText) {
       case 'ERROR':
-        this.nestLogger.error(formattedMessage, ...optionalParams);
+        this.consoleLogger.error(formattedMessage, ...optionalParams);
         break;
       case 'WARN':
-        this.nestLogger.warn(formattedMessage, ...optionalParams);
+        this.consoleLogger.warn(formattedMessage, ...optionalParams);
         break;
       case 'DEBUG':
-        this.nestLogger.debug(formattedMessage, ...optionalParams);
+        this.consoleLogger.debug(formattedMessage, ...optionalParams);
         break;
       case 'VERBOSE':
-        this.nestLogger.verbose(formattedMessage, ...optionalParams);
+        this.consoleLogger.verbose(formattedMessage, ...optionalParams);
         break;
       case 'FATAL':
-        this.nestLogger.error(`[FATAL] ${formattedMessage}`, ...optionalParams);
+        this.consoleLogger.error(`[FATAL] ${formattedMessage}`, ...optionalParams);
         break;
       default:
-        this.nestLogger.log(formattedMessage, ...optionalParams);
+        this.consoleLogger.log(formattedMessage, ...optionalParams);
     }
 
     // OTLP export
@@ -138,7 +138,7 @@ export class OtelLogger implements LoggerService {
         attributes
       });
     } catch (err) {
-      this.nestLogger.error('OpenTelemetry log emission failed:', err);
+      this.consoleLogger.error('OpenTelemetry log emission failed:', err);
     }
   }
 }
