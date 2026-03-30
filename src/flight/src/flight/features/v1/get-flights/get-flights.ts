@@ -1,7 +1,7 @@
 import { IFlightRepository } from '@/data/repositories/flightRepository';
 import { FlightDto } from '@/flight/dtos/flight.dto';
 import { ApiBearerAuth, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { IQueryHandler, QueryBus, QueryHandler } from '@nestjs/cqrs';
 import { PagedResult } from 'building-blocks/types/pagination/paged-result';
 import { Flight } from '@/flight/entities/flight.entity';
@@ -9,6 +9,15 @@ import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import mapper from '@/flight/mappings';
 import { GetFlightsQueryDto } from '@/flight/dtos/get-flights-query.dto';
 import { getEffectiveFlightStatus } from '@/flight/utils/flight-status';
+import { getVietnamBusinessDayStart } from '@/flight/utils/flight-date';
+import { Role } from 'building-blocks/contracts/identity.contract';
+import { Request } from 'express';
+
+type JwtRequest = Request & {
+  user?: {
+    role?: number | string;
+  };
+};
 
 export class GetFlights {
   page = 1;
@@ -16,6 +25,7 @@ export class GetFlights {
   orderBy = 'id';
   order: 'ASC' | 'DESC' = 'ASC';
   searchTerm?: string = null;
+  isAdmin = false;
 
   constructor(request: Partial<GetFlights> = {}) {
     Object.assign(this, request);
@@ -47,8 +57,22 @@ export class GetFlightsController {
     example: 'id'
   })
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
-  public async getFlights(@Query() query: GetFlightsQueryDto): Promise<PagedResult<FlightDto[] | null>> {
-    return await this.queryBus.execute(new GetFlights(query));
+  public async getFlights(
+    @Query() query: GetFlightsQueryDto,
+    @Req() request: JwtRequest
+  ): Promise<PagedResult<FlightDto[] | null>> {
+    const role = Number(request.user?.role);
+
+    if (Number.isNaN(role)) {
+      throw new UnauthorizedException('Invalid token payload');
+    }
+
+    return await this.queryBus.execute(
+      new GetFlights({
+        ...query,
+        isAdmin: role === Role.ADMIN
+      })
+    );
   }
 }
 
@@ -58,14 +82,16 @@ export class GetFlightsHandler implements IQueryHandler<GetFlights> {
 
   async execute(query: GetFlights): Promise<PagedResult<FlightDto[] | null>> {
     const normalizedSearchTerm = query.searchTerm || null;
+    const minFlightDate = query.isAdmin ? undefined : getVietnamBusinessDayStart(new Date());
 
-    const [flightsEntity, total] = await this.flightRepository.findFlights(
-      query.page,
-      query.pageSize,
-      query.orderBy,
-      query.order,
-      normalizedSearchTerm
-    );
+    const [flightsEntity, total] = await this.flightRepository.findFlights({
+      page: query.page,
+      pageSize: query.pageSize,
+      orderBy: query.orderBy,
+      order: query.order,
+      searchTerm: normalizedSearchTerm,
+      minFlightDate
+    });
 
     if (flightsEntity?.length === 0) {
       return new PagedResult<FlightDto[] | null>(null, total);

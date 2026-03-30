@@ -101,6 +101,38 @@ describe('dashboard page', () => {
     expect(await screen.findByText('VN777')).toBeInTheDocument();
   });
 
+  it('renders the non-admin flight snapshot directly from the shared flight list endpoint', async () => {
+    setAuthenticatedUser({ role: Role.USER });
+
+    const visibleFlight = makeFlight({
+      id: 555,
+      flightNumber: 'VN555',
+      flightStatus: FlightStatus.SCHEDULED
+    });
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/flight/get-all', () =>
+        HttpResponse.json({
+          result: [visibleFlight],
+          total: 1
+        })
+      ),
+      http.get('/api/v1/booking/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      )
+    );
+
+    renderWithRoute(<DashboardPage />, { route: '/dashboard', path: '/dashboard' });
+
+    expect(await screen.findByText('Flights · Ready')).toBeInTheDocument();
+    expect(await screen.findByText('Available flight records you can browse and book from here.')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
   it('renders compact revenue metric using K/M/B unit', async () => {
     setAuthenticatedUser({ role: Role.ADMIN });
 

@@ -41,6 +41,25 @@ import {
 
 const { Text } = Typography;
 
+const resolveFlightOrderBy = (
+  sorter: SorterResult<FlightDto> | undefined,
+  fallback: string
+): string => {
+  const field = typeof sorter?.field === 'string' ? sorter.field : null;
+  const columnKey = typeof sorter?.columnKey === 'string' ? sorter.columnKey : null;
+  const candidate = field || columnKey;
+
+  if (candidate === 'summary') {
+    return 'flightDate';
+  }
+
+  if (candidate && ['id', 'flightNumber', 'price', 'flightDate'].includes(candidate)) {
+    return candidate;
+  }
+
+  return fallback;
+};
+
 export const FlightListPage = () => {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -169,7 +188,7 @@ export const FlightListPage = () => {
     sorter: SorterResult<FlightDto> | SorterResult<FlightDto>[]
   ) => {
     const sorterObject = Array.isArray(sorter) ? sorter[0] : sorter;
-    const orderBy = typeof sorterObject?.field === 'string' ? sorterObject.field : params.orderBy || 'flightDate';
+    const orderBy = resolveFlightOrderBy(sorterObject, params.orderBy || 'flightDate');
     const order = sorterObject?.order === 'descend' ? 'DESC' : 'ASC';
 
     setParams((prev) => ({

@@ -125,6 +125,35 @@ describe('create booking flow', () => {
     expect(screen.getByRole('button', { name: 'Không thể đặt' })).toBeDisabled();
   });
 
+  it('renders every flight returned by backend without extra past-flight filtering', async () => {
+    const futureFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+    const pastFlight = makeFlight({
+      id: 2,
+      flightNumber: 'VN002',
+      departureDate: '2000-03-10T08:00:00.000Z',
+      arriveDate: '2000-03-10T10:00:00.000Z'
+    });
+
+    mockCreateBookingDependencies({
+      flights: [futureFlight, pastFlight],
+      selectedFlight: futureFlight
+    });
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create',
+      path: '/bookings/create'
+    });
+
+    expect(await screen.findByText('VN123')).toBeInTheDocument();
+    expect(screen.getByText('VN002')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Không thể đặt' })).toBeDisabled();
+  });
+
   it(
     'creates a pending checkout, then syncs booking once payment becomes succeeded',
     async () => {

@@ -2,6 +2,15 @@ import { EntityManager, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Flight } from '@/flight/entities/flight.entity';
 
+export type FindFlightsParams = {
+  page: number;
+  pageSize: number;
+  orderBy: string;
+  order: 'ASC' | 'DESC';
+  searchTerm?: string | null;
+  minFlightDate?: Date;
+};
+
 export interface IFlightRepository {
   createFlight(flight: Flight, manager?: EntityManager): Promise<Flight>;
   findFlightByNumber(flightNumber: string): Promise<Flight>;
@@ -11,13 +20,7 @@ export interface IFlightRepository {
     manager?: EntityManager
   ): Promise<Flight>;
   findFlightById(id: number): Promise<Flight>;
-  findFlights(
-    page: number,
-    pageSize: number,
-    orderBy: string,
-    order: 'ASC' | 'DESC',
-    searchTerm?: string
-  ): Promise<[Flight[], number]>;
+  findFlights(params: FindFlightsParams): Promise<[Flight[], number]>;
   getAll(): Promise<Flight[]>;
 }
 
@@ -57,24 +60,33 @@ export class FlightRepository implements IFlightRepository {
     });
   }
 
-  async findFlights(
-    page: number,
-    pageSize: number,
-    orderBy: string,
-    order: 'ASC' | 'DESC',
-    searchTerm?: string
-  ): Promise<[Flight[], number]> {
+  async findFlights({
+    page,
+    pageSize,
+    orderBy,
+    order,
+    searchTerm,
+    minFlightDate
+  }: FindFlightsParams): Promise<[Flight[], number]> {
     const query = this.flightRepository
-      .createQueryBuilder('flight')
-      .orderBy(`flight.${orderBy}`, order)
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+      .createQueryBuilder('flight');
 
     if (searchTerm) {
       query.andWhere('flight.flightNumber ILIKE :searchTerm', {
         searchTerm: `%${searchTerm}%`
       });
     }
+
+    if (minFlightDate) {
+      query.andWhere('flight.flightDate >= :minFlightDate', {
+        minFlightDate
+      });
+    }
+
+    query
+      .orderBy(`flight.${orderBy}`, order)
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
 
     return await query.getManyAndCount();
   }

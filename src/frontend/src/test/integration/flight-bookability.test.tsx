@@ -1,4 +1,5 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlightDetailPage } from '@pages/flights/FlightDetailPage';
@@ -62,6 +63,36 @@ describe('flight booking availability surfaces', () => {
     expect(invalidFlightRow).not.toBeNull();
     expect(within(validFlightRow as HTMLElement).getByRole('button', { name: 'shopping-cart' })).toBeEnabled();
     expect(within(invalidFlightRow as HTMLElement).getByRole('button', { name: 'shopping-cart' })).toBeDisabled();
+  });
+
+  it('maps summary column sorting to orderBy=flightDate', async () => {
+    const user = userEvent.setup();
+    const validFlight = makeFlight({ id: 1, flightNumber: 'VN123', flightStatus: FlightStatus.SCHEDULED });
+    const requestedOrderBy: Array<string | null> = [];
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/aircraft/get-all', () => HttpResponse.json(aircrafts)),
+      http.get('/api/v1/flight/get-all', ({ request }) => {
+        requestedOrderBy.push(new URL(request.url).searchParams.get('orderBy'));
+        return HttpResponse.json({
+          result: [validFlight],
+          total: 1
+        });
+      })
+    );
+
+    enableDesktopBreakpoints();
+    renderWithRoute(<FlightListPage />, { route: '/flights', path: '/flights' });
+
+    await screen.findByText('VN123');
+
+    await user.click(screen.getAllByText('Giá vé')[0].closest('th') as HTMLElement);
+    await waitFor(() => expect(requestedOrderBy).toContain('price'));
+
+    await user.click(screen.getAllByText('Chuyến bay')[0].closest('th') as HTMLElement);
+    await waitFor(() => expect(requestedOrderBy.at(-1)).toBe('flightDate'));
+    expect(requestedOrderBy).not.toContain('summary');
   });
 
   it('disables the booking CTA in the flight detail page for invalid flights', async () => {
