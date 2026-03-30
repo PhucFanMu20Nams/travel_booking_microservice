@@ -1,5 +1,5 @@
-import { PlusOutlined, SyncOutlined } from '@ant-design/icons';
-import { Alert, Button, Col, Form, Input, Modal, Row, Select, Space, Table, Typography } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Col, Form, Input, Modal, Row, Select, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { SectionCard } from '@components/common/SectionCard';
 import { StatusPill } from '@components/common/StatusPill';
 import { useGetAircrafts } from '@hooks/useAircrafts';
 import { useGetFlightById } from '@hooks/useFlights';
-import { useCreateSeat, useGetSeatsByFlight, useReconcileMissingSeats } from '@hooks/useSeats';
+import { useCreateSeat, useGetSeatsByFlight } from '@hooks/useSeats';
 import { SeatClass, SeatType } from '@/types/enums';
 import { CreateSeatRequest, SeatDto } from '@/types/seat.types';
 import { formatDateTime, seatClassLabels, seatTypeLabels } from '@utils/format';
@@ -42,7 +42,6 @@ export const SeatManagementPage = () => {
   const aircraftsQuery = useGetAircrafts();
   const seatsQuery = useGetSeatsByFlight(flightId);
   const createSeatMutation = useCreateSeat();
-  const reconcileMissingSeatsMutation = useReconcileMissingSeats();
 
   const seats = useMemo(() => seatsQuery.data ?? [], [seatsQuery.data]);
 
@@ -120,14 +119,6 @@ export const SeatManagementPage = () => {
     });
   };
 
-  const handleReconcile = async () => {
-    try {
-      await reconcileMissingSeatsMutation.mutateAsync({ flightId });
-    } catch {
-      // Error toast is handled in mutation onError.
-    }
-  };
-
   return (
     <>
       <PageHeader
@@ -136,19 +127,9 @@ export const SeatManagementPage = () => {
         subtitle="Seat inventory view thống nhất với flight detail: summary cards phía trên, table ops phía dưới."
         onBack={() => navigate(`/flights/${flightId}`)}
         extra={
-          <Space>
-            <Button
-              icon={<SyncOutlined />}
-              size="large"
-              onClick={handleReconcile}
-              loading={reconcileMissingSeatsMutation.isPending}
-            >
-              Khởi tạo ghế tự động
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setOpen(true)}>
-              Thêm ghế
-            </Button>
-          </Space>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setOpen(true)}>
+            Thêm ghế
+          </Button>
         }
       />
 
@@ -158,7 +139,7 @@ export const SeatManagementPage = () => {
           showIcon
           style={{ marginBottom: 16 }}
           message={`Flight đang thiếu ${missingSeats} ghế so với cấu hình chuẩn (${stats.total}/${expectedSeats}).`}
-          description="Nhấn 'Khởi tạo ghế tự động' để backfill toàn bộ ghế thiếu cho flight này."
+          description="Dữ liệu ghế hiện chưa khớp cấu hình chuẩn. Nếu cần, bạn có thể thêm ghế thủ công cho chuyến bay này."
         />
       ) : null}
 
@@ -180,7 +161,7 @@ export const SeatManagementPage = () => {
           />
         </Col>
         <Col xs={24} md={6}>
-          <MetricCard label="Missing" value={missingSeats} caption="Số ghế còn thiếu cần được backfill." accent="#cf3f4f" />
+          <MetricCard label="Missing" value={missingSeats} caption="Số ghế hiện còn thiếu so với cấu hình chuẩn." accent="#cf3f4f" />
         </Col>
         <Col xs={24} md={6}>
           <MetricCard label="Available" value={stats.available} caption="Seats still open for reservation." accent="#13908c" />
