@@ -14,3 +14,7 @@ services:
   booking:
     env_file:
       - ../../src/booking/.env.rds
+
+  payment:
+    env_file:
+      - ../../src/payment/.env.rds

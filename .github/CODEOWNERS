@@ -1,0 +1,10 @@
+* @phucttg
+
+/src/building-blocks/ @phucttg
+/src/identity/ @phucttg
+/src/passenger/ @phucttg
+/src/flight/ @phucttg
+/src/booking/ @phucttg
+/src/payment/ @phucttg
+/deployments/ @phucttg
+/.github/workflows/ @phucttg

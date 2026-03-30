@@ -2,9 +2,9 @@ COMPOSE_BASE := deployments/docker-compose/docker-compose.yaml
 COMPOSE_RDS := deployments/docker-compose/docker-compose.rds.yaml
 COMPOSE_RDS_CMD := docker compose -f $(COMPOSE_BASE) -f $(COMPOSE_RDS)
 
-BACKEND_SERVICES := identity flight passenger booking
+BACKEND_SERVICES := identity flight passenger booking payment
 
-.PHONY: up-rds down-rds cutover-rds restart-identity-rds stop-local-postgres rm-local-postgres ps-rds verify-rds-env logs-rds rebuild-frontend wallet-proxy-smoke
+.PHONY: up-rds down-rds cutover-rds restart-identity-rds restart-payment-rds stop-local-postgres rm-local-postgres ps-rds verify-rds-env logs-rds rebuild-frontend wallet-proxy-smoke
 
 up-rds:
 	$(COMPOSE_RDS_CMD) up -d rabbitmq
@@ -25,6 +25,9 @@ cutover-rds: stop-local-postgres rm-local-postgres up-rds
 restart-identity-rds:
 	$(COMPOSE_RDS_CMD) restart identity
 
+restart-payment-rds:
+	$(COMPOSE_RDS_CMD) restart payment
+
 ps-rds:
 	$(COMPOSE_RDS_CMD) ps
 
@@ -33,6 +36,7 @@ verify-rds-env:
 	$(COMPOSE_RDS_CMD) exec -T flight sh -lc 'echo flight:$${POSTGRES_HOST}/$${POSTGRES_Database}'
 	$(COMPOSE_RDS_CMD) exec -T passenger sh -lc 'echo passenger:$${POSTGRES_HOST}/$${POSTGRES_Database}'
 	$(COMPOSE_RDS_CMD) exec -T booking sh -lc 'echo booking:$${POSTGRES_HOST}/$${POSTGRES_Database}'
+	$(COMPOSE_RDS_CMD) exec -T payment sh -lc 'echo payment:$${POSTGRES_HOST}/$${POSTGRES_Database}'
 
 logs-rds:
 	$(COMPOSE_RDS_CMD) logs --tail=150 $(BACKEND_SERVICES) frontend

@@ -2,104 +2,267 @@ name: CI
 
 on:
   push:
-    branches: [ "main"]
+    branches: ["main"]
     paths-ignore:
       - "README.md"
       - "CHANGELOG.md"
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      building_blocks: ${{ steps.filter.outputs.building_blocks }}
+      identity: ${{ steps.filter.outputs.identity }}
+      flight: ${{ steps.filter.outputs.flight }}
+      passenger: ${{ steps.filter.outputs.passenger }}
+      booking: ${{ steps.filter.outputs.booking }}
+      payment: ${{ steps.filter.outputs.payment }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      compose: ${{ steps.filter.outputs.compose }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-  ci:
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            building_blocks:
+              - 'src/building-blocks/**'
+            identity:
+              - 'src/identity/**'
+            flight:
+              - 'src/flight/**'
+            passenger:
+              - 'src/passenger/**'
+            booking:
+              - 'src/booking/**'
+            payment:
+              - 'src/payment/**'
+            frontend:
+              - 'src/frontend/**'
+            compose:
+              - 'deployments/**'
+              - 'Makefile'
+              - '.github/workflows/**'
+              - '.github/CODEOWNERS'
+
+  identity:
+    needs: changes
+    if: needs.changes.outputs.identity == 'true' || needs.changes.outputs.building_blocks == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ github.token }}
           persist-credentials: false
           fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: "22.x"
 
-      - name: build building-blocks
+      - name: Build building-blocks
         run: |
           npm install
           npm run build
         working-directory: ./src/building-blocks
 
-      - name: build identity
+      - name: Build identity
         run: |
           npm install
           npm run build
         working-directory: ./src/identity
 
-      - name: test identity
+      - name: Test identity
         run: npm test
         working-directory: ./src/identity
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-1234
 
-      - name: build flight
+  flight:
+    needs: changes
+    if: needs.changes.outputs.flight == 'true' || needs.changes.outputs.building_blocks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build building-blocks
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/building-blocks
+
+      - name: Build flight
         run: |
           npm install
           npm run build
         working-directory: ./src/flight
 
-      - name: test flight
+      - name: Test flight
         run: npm test -- seat-pricing.test.ts
         working-directory: ./src/flight
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-1234
 
-      - name: build passenger
+  passenger:
+    needs: changes
+    if: needs.changes.outputs.passenger == 'true' || needs.changes.outputs.building_blocks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build building-blocks
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/building-blocks
+
+      - name: Build passenger
         run: |
           npm install
           npm run build
         working-directory: ./src/passenger
 
-      - name: build booking
+      - name: Test passenger
+        run: npm test -- create-user.test.ts update-user.test.ts
+        working-directory: ./src/passenger
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-1234
+
+  booking:
+    needs: changes
+    if: needs.changes.outputs.booking == 'true' || needs.changes.outputs.building_blocks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build building-blocks
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/building-blocks
+
+      - name: Build booking
         run: |
           npm install
           npm run build
         working-directory: ./src/booking
 
-      - name: test booking
+      - name: Test booking
         run: npm test -- create-booking.handler.test.ts
         working-directory: ./src/booking
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-1234
 
-      - name: build payment
+  payment:
+    needs: changes
+    if: needs.changes.outputs.payment == 'true' || needs.changes.outputs.building_blocks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build building-blocks
+        run: |
+          npm install
+          npm run build
+        working-directory: ./src/building-blocks
+
+      - name: Build payment
         run: |
           npm install
           npm run build
         working-directory: ./src/payment
 
-      - name: test payment
-        run: npm test -- confirm-payment.handler.test.ts
+      - name: Test payment
+        run: |
+          npm test -- confirm-payment.handler.test.ts
+          npm test -- reconcile-manual.handler.test.ts
+          npm test -- pay-booking-with-wallet.handler.test.ts
         working-directory: ./src/payment
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-1234
 
-      - name: build frontend
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build frontend
         run: |
           npm install
           npm run build
         working-directory: ./src/frontend
 
-      - name: test frontend
+      - name: Test frontend
         run: |
           npm test -- create-booking-flow.test.tsx
           npm test -- booking-status-and-cancel.test.tsx presentation.rules.test.ts
         working-directory: ./src/frontend
+
+  compose-config:
+    needs: changes
+    if: needs.changes.outputs.compose == 'true' || needs.changes.outputs.booking == 'true' || needs.changes.outputs.payment == 'true' || needs.changes.outputs.identity == 'true' || needs.changes.outputs.passenger == 'true' || needs.changes.outputs.building_blocks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate docker compose files
+        run: |
+          docker compose -f deployments/docker-compose/docker-compose.yaml config > /dev/null
+          docker compose -f deployments/docker-compose/docker-compose.yaml -f deployments/docker-compose/docker-compose.rds.yaml config > /dev/null
