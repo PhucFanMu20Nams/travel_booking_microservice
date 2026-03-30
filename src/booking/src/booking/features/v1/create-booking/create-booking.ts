@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   BadRequestException,
@@ -27,6 +28,7 @@ import { Booking } from '@/booking/entities/booking.entity';
 import { CreateBookingRequestDto } from '@/booking/dtos/create-booking-request.dto';
 import {
   FlightStatus,
+  PREMIUM_SEAT_SELECTION_REQUIRED_CODE,
   SeatReleaseReason,
   SeatReleaseRequested
 } from 'building-blocks/contracts/flight.contract';
@@ -171,7 +173,7 @@ export class CreateBookingHandler implements ICommandHandler<CreateBooking> {
       });
     }
 
-    const reservedSeat = await this.flightClient.reserveSeat({
+    const reservedSeat = await this.reserveSeatForBooking({
       seatNumber: command.seatNumber,
       flightId: flightDto?.id
     });
@@ -303,6 +305,37 @@ export class CreateBookingHandler implements ICommandHandler<CreateBooking> {
           requestedAt: new Date()
         })
       );
+
+      throw error;
+    }
+  }
+
+  private async reserveSeatForBooking(request: { seatNumber?: string; flightId: number }) {
+    try {
+      return await this.flightClient.reserveSeat(request);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const payload =
+          typeof error.response?.data === 'object' && error.response?.data !== null
+            ? (error.response.data as Record<string, unknown>)
+            : {};
+        const message =
+          (typeof payload.title === 'string' && payload.title) ||
+          (typeof payload.message === 'string' && payload.message) ||
+          'Seat reservation failed';
+
+        if (status === HttpStatus.CONFLICT && payload.code === PREMIUM_SEAT_SELECTION_REQUIRED_CODE) {
+          throw new ConflictException({
+            message,
+            code: PREMIUM_SEAT_SELECTION_REQUIRED_CODE
+          });
+        }
+
+        if (status === HttpStatus.NOT_FOUND) {
+          throw new NotFoundException(message);
+        }
+      }
 
       throw error;
     }

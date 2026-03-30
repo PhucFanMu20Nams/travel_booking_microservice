@@ -55,6 +55,7 @@ describe('flight booking availability surfaces', () => {
 
     await screen.findByText('VN404');
     expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getAllByText('Base fare').length).toBeGreaterThan(0);
 
     const validFlightRow = screen.getByText('VN123').closest('tr');
     const invalidFlightRow = screen.getByText('VN404').closest('tr');
@@ -87,7 +88,7 @@ describe('flight booking availability surfaces', () => {
 
     await screen.findByText('VN123');
 
-    await user.click(screen.getAllByText('Giá vé')[0].closest('th') as HTMLElement);
+    await user.click(screen.getAllByText('Base fare')[0].closest('th') as HTMLElement);
     await waitFor(() => expect(requestedOrderBy).toContain('price'));
 
     await user.click(screen.getAllByText('Chuyến bay')[0].closest('th') as HTMLElement);
@@ -108,6 +109,7 @@ describe('flight booking availability surfaces', () => {
     renderWithRoute(<FlightDetailPage />, { route: '/flights/9', path: '/flights/:id' });
 
     expect(await screen.findByText('VN909')).toBeInTheDocument();
+    expect(screen.getByText('Base fare')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Đặt vé' })).toBeDisabled();
   });
 });

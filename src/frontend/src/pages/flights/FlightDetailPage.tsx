@@ -139,11 +139,11 @@ export const FlightDetailPage = () => {
         <EntityHero
           eyebrow="Route briefing"
           title={`${route.compact} · ${flight.flightNumber}`}
-          subtitle={`${route.verbose}. Aircraft ${aircraftMap[flight.aircraftId] || `#${flight.aircraftId}`} đang dùng cho hành trình này.`}
+          subtitle={`${route.verbose}. Aircraft ${aircraftMap[flight.aircraftId] || `#${flight.aircraftId}`} đang dùng cho hành trình này. Base fare được hiển thị cho đến khi ghế được khóa.`}
           tags={
             <>
               <StatusPill label={flightStatusLabels[flight.flightStatus]} tone={getFlightStatusTone(flight.flightStatus)} />
-              <StatusPill label={formatCurrency(flight.price)} tone="accent" />
+              <StatusPill label={`Base fare ${formatCurrency(flight.price)}`} tone="accent" />
             </>
           }
           meta={`${formatDateTime(flight.departureDate)} → ${formatDateTime(flight.arriveDate)} · ${formatDuration(flight.durationMinutes)}`}
@@ -189,7 +189,7 @@ export const FlightDetailPage = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={10}>
-          <SectionCard title="Flight brief" subtitle="Schedule, fare and aircraft context">
+          <SectionCard title="Flight brief" subtitle="Schedule, base fare and aircraft context">
             {flight && (
               <Descriptions bordered column={1} size="middle">
                 <Descriptions.Item label="Flight number">{flight.flightNumber}</Descriptions.Item>
@@ -199,7 +199,7 @@ export const FlightDetailPage = () => {
                   {formatDateTime(flight.departureDate)} - {formatDateTime(flight.arriveDate)}
                 </Descriptions.Item>
                 <Descriptions.Item label="Duration">{formatDuration(flight.durationMinutes)}</Descriptions.Item>
-                <Descriptions.Item label="Fare">{formatCurrency(flight.price)}</Descriptions.Item>
+                <Descriptions.Item label="Base fare">{formatCurrency(flight.price)}</Descriptions.Item>
                 <Descriptions.Item label="Aircraft">
                   {aircraftMap[flight.aircraftId] || `#${flight.aircraftId}`}
                 </Descriptions.Item>

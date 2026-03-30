@@ -25,6 +25,8 @@ export declare enum SeatReleaseReason {
     BOOKING_EXPIRED = 2,
     PAYMENT_INTENT_CREATE_FAILED = 3
 }
+export declare const PREMIUM_SEAT_SELECTION_REQUIRED_CODE = "PREMIUM_SEAT_SELECTION_REQUIRED";
+export declare const PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE = "Economy seats are sold out. Please select a premium seat to continue.";
 export declare class FlightCreated implements IEvent {
     id: number;
     flightNumber: string;

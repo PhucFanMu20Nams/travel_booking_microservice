@@ -55,6 +55,10 @@ export enum SeatReleaseReason {
   PAYMENT_INTENT_CREATE_FAILED = 3
 }
 
+export const PREMIUM_SEAT_SELECTION_REQUIRED_CODE = 'PREMIUM_SEAT_SELECTION_REQUIRED';
+export const PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE =
+  'Economy seats are sold out. Please select a premium seat to continue.';
+
 export class FlightCreated implements IEvent {
   @ToInteger()
   @IsInt()

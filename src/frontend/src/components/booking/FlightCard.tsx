@@ -135,7 +135,11 @@ export const FlightCard = ({
           </Space>
 
           <Space direction="vertical" size={8} align="end">
+            <Text type="secondary">Base fare</Text>
             <Text style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(flight.price)}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Final total locks after seat selection
+            </Text>
             {actionSlot ||
               (onSelect ? (
                 <Button type="primary" size="large" onClick={() => onSelect(flight)}>

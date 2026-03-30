@@ -3,6 +3,7 @@ import { IFlightRepository } from '@/data/repositories/flightRepository';
 import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   Body,
+  ConflictException,
   Controller,
   HttpStatus,
   Inject,
@@ -16,7 +17,11 @@ import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { Seat } from '@/seat/entities/seat.entity';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
-import { SeatReserved } from 'building-blocks/contracts/flight.contract';
+import {
+  PREMIUM_SEAT_SELECTION_REQUIRED_CODE,
+  PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE,
+  SeatReserved
+} from 'building-blocks/contracts/flight.contract';
 import { ReserveSeatRequestDto } from '@/seat/dtos/reserve-seat-request.dto';
 import mapper from '@/seat/mappings';
 import { SeatDto } from '@/seat/dtos/seat.dto';
@@ -47,6 +52,7 @@ export class ReserveSeatController {
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })
   @ApiResponse({ status: 200, description: 'OK' })
+  @ApiResponse({ status: 409, description: PREMIUM_SEAT_SELECTION_REQUIRED_CODE })
   public async reserveSeat(
     @Body() request: ReserveSeatRequestDto,
     @Res() res: Response
@@ -77,9 +83,18 @@ export class ReserveSeatHandler implements ICommandHandler<ReserveSeat> {
       throw new NotFoundException('Flight is no longer available for booking');
     }
 
-    const seat = await this.seatRepository.reserveSeat(command.flightId, command.seatNumber);
+    const seat = command.seatNumber
+      ? await this.seatRepository.reserveSeat(command.flightId, command.seatNumber)
+      : await this.seatRepository.reserveEconomySeat(command.flightId);
 
     if (seat == null) {
+      if (!command.seatNumber && (await this.seatRepository.hasAvailablePremiumSeats(command.flightId))) {
+        throw new ConflictException({
+          message: PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE,
+          code: PREMIUM_SEAT_SELECTION_REQUIRED_CODE
+        });
+      }
+
       throw new NotFoundException(command.seatNumber ? 'Seat not available!' : 'No seat available!');
     }
 

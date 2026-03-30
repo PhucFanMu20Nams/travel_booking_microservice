@@ -43,7 +43,7 @@ import { useGetAvailableSeats } from '@hooks/useSeats';
 import { useAuthStore } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { BookingCheckoutDto, BookingDto } from '@/types/booking.types';
-import { PaginationParams } from '@/types/common.types';
+import { AppError, PaginationParams } from '@/types/common.types';
 import { BookingStatus, PaymentStatus, SeatClass } from '@/types/enums';
 import { FlightDto } from '@/types/flight.types';
 import { SeatDto } from '@/types/seat.types';
@@ -85,6 +85,55 @@ const seatClassToCss = (seatClass: SeatClass): string => {
 
 const createIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() || `idempo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const PREMIUM_SEAT_SELECTION_REQUIRED_CODE = 'PREMIUM_SEAT_SELECTION_REQUIRED';
+const PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE =
+  'Economy seats are sold out. Please select a premium seat to continue.';
+
+const getCreateBookingBusinessCode = (appError: AppError): string => {
+  const rawResponseData =
+    typeof appError.raw === 'object' &&
+    appError.raw !== null &&
+    'response' in appError.raw &&
+    typeof (appError.raw as { response?: { data?: unknown } }).response?.data === 'object' &&
+    (appError.raw as { response?: { data?: unknown } }).response?.data !== null
+      ? ((appError.raw as { response?: { data?: Record<string, unknown> } }).response?.data as Record<string, unknown>)
+      : null;
+
+  if (typeof rawResponseData?.code === 'string' && rawResponseData.code) {
+    return rawResponseData.code;
+  }
+
+  if (typeof appError.meta?.code === 'string' && appError.meta.code) {
+    return appError.meta.code;
+  }
+
+  return appError.code || '';
+};
+
+const getCreateBookingBusinessMessage = (appError: AppError): string => {
+  const rawResponseData =
+    typeof appError.raw === 'object' &&
+    appError.raw !== null &&
+    'response' in appError.raw &&
+    typeof (appError.raw as { response?: { data?: unknown } }).response?.data === 'object' &&
+    (appError.raw as { response?: { data?: unknown } }).response?.data !== null
+      ? ((appError.raw as { response?: { data?: Record<string, unknown> } }).response?.data as Record<string, unknown>)
+      : null;
+
+  if (typeof rawResponseData?.title === 'string' && rawResponseData.title) {
+    return rawResponseData.title;
+  }
+
+  if (typeof rawResponseData?.message === 'string' && rawResponseData.message) {
+    return rawResponseData.message;
+  }
+
+  if (appError.message && !appError.message.startsWith('Request failed with status code ')) {
+    return appError.message;
+  }
+
+  return '';
+};
 
 export const CreateBookingPage = () => {
   const navigate = useNavigate();
@@ -108,6 +157,7 @@ export const CreateBookingPage = () => {
   const [checkout, setCheckout] = useState<BookingCheckoutDto | null>(null);
   const [createdBooking, setCreatedBooking] = useState<BookingDto | null>(null);
   const [inlineAlert, setInlineAlert] = useState<InlineAlert | null>(null);
+  const [seatSelectionAlert, setSeatSelectionAlert] = useState<InlineAlert | null>(null);
   const [resumeWarning, setResumeWarning] = useState<InlineAlert | null>(null);
   const [duplicateBookingId, setDuplicateBookingId] = useState<number | null>(null);
   const [countdownNow, setCountdownNow] = useState<number>(Date.now());
@@ -288,6 +338,17 @@ export const CreateBookingPage = () => {
   }, [selectedFlight, selectedFlightIsBookable, step]);
 
   useEffect(() => {
+    setSeatSelectionAlert(null);
+    setDuplicateBookingId(null);
+  }, [selectedFlightId]);
+
+  useEffect(() => {
+    if (selectedSeat && [SeatClass.BUSINESS, SeatClass.FIRST_CLASS].includes(selectedSeat.seatClass)) {
+      setSeatSelectionAlert(null);
+    }
+  }, [selectedSeat]);
+
+  useEffect(() => {
     if (step !== 3 || !paymentExpiresAt) {
       return;
     }
@@ -349,6 +410,7 @@ export const CreateBookingPage = () => {
 
     setInlineAlert(null);
     setDuplicateBookingId(null);
+    setSeatSelectionAlert(null);
 
     try {
       const response = await createBookingMutation.mutateAsync({
@@ -373,6 +435,24 @@ export const CreateBookingPage = () => {
     } catch (error) {
       const appError = normalizeProblemError(error);
       const existingBookingId = Number(appError.meta?.existingBookingId || 0);
+      const businessCode = getCreateBookingBusinessCode(appError);
+      const businessMessage = getCreateBookingBusinessMessage(appError);
+      const isImplicitPremiumSelectionConflict =
+        !selectedSeatNumber && appError.status === 409 && existingBookingId <= 0;
+
+      if (
+        businessCode === PREMIUM_SEAT_SELECTION_REQUIRED_CODE ||
+        businessMessage === PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE ||
+        isImplicitPremiumSelectionConflict
+      ) {
+        setStep(1);
+        setSeatSelectionAlert({
+          type: 'warning',
+          message: businessMessage || PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE,
+          description: 'Vui lòng chọn một ghế Business hoặc First Class để tiếp tục và khóa đúng giá cuối cùng.'
+        });
+        return;
+      }
 
       if (existingBookingId > 0) {
         setDuplicateBookingId(existingBookingId);
@@ -524,6 +604,22 @@ export const CreateBookingPage = () => {
             <Alert type="warning" showIcon message="Không có ghế trống cho chuyến bay này." />
           )}
 
+          <Alert
+            type="info"
+            showIcon
+            message="Có thể bỏ qua chọn ghế để auto-assign Economy"
+            description="Nếu không chọn ghế, hệ thống chỉ tự giữ chỗ Economy còn trống. Business và First Class phải được chọn thủ công."
+          />
+
+          {seatSelectionAlert && (
+            <Alert
+              type={seatSelectionAlert.type}
+              showIcon
+              message={seatSelectionAlert.message}
+              description={seatSelectionAlert.description}
+            />
+          )}
+
           <Space wrap>
             <Text type="secondary">View:</Text>
             <Button type={seatViewMode === 'map' ? 'primary' : 'default'} onClick={() => setSeatViewMode('map')}>
@@ -612,7 +708,7 @@ export const CreateBookingPage = () => {
             <Button onClick={() => setStep(0)}>Quay lại</Button>
             <Button
               type="primary"
-              disabled={!selectedSeatNumber || seats.length === 0 || !selectedFlightIsBookable}
+              disabled={seats.length === 0 || !selectedFlightIsBookable}
               onClick={() => setStep(2)}
             >
               Tiếp tục review
@@ -664,7 +760,13 @@ export const CreateBookingPage = () => {
               <Text type="secondary">
                 {`${selectedFlight.flightNumber} · ${formatDateLabel(selectedFlight.flightDate)} · ${formatScheduleStrip(selectedFlight.departureDate, selectedFlight.arriveDate)}`}
               </Text>
+              <Text type="secondary">{selectedSeat ? 'Selected fare' : 'Base fare'}</Text>
               <Text strong>{formatCurrency(selectedSeat?.price || selectedFlight.price, selectedSeat?.currency || 'VND')}</Text>
+              <Text type="secondary">
+                {selectedSeat
+                  ? `Checkout sẽ khóa đúng giá của ghế ${selectedSeat.seatNumber}.`
+                  : 'Final total sẽ được khóa sau khi ghế được gán. Business và First Class cần được chọn thủ công.'}
+              </Text>
             </Space>
           </Card>
         )}
@@ -954,7 +1056,7 @@ export const CreateBookingPage = () => {
                       <Text type="secondary">
                         {selectedSeat
                           ? `Seat ${selectedSeat.seatNumber} selected · ${seatClassLabels[selectedSeat.seatClass]} / ${seatTypeLabels[selectedSeat.seatType]} · ${formatCurrency(selectedSeat.price, selectedSeat.currency)}`
-                          : 'Seat selection pending'}
+                          : `No seat selected yet · Base fare ${formatCurrency(selectedFlight.price)} · Economy auto-assign if available`}
                       </Text>
                       <Text type="secondary">
                         {passengerQuery.data

@@ -147,11 +147,18 @@ export const FlightListPage = () => {
         sorter: true
       },
       {
-        title: 'Giá vé',
+        title: 'Base fare',
         dataIndex: 'price',
         key: 'price',
         width: 140,
-        render: (value: number) => <Text strong>{formatCurrency(value)}</Text>,
+        render: (value: number) => (
+          <Space direction="vertical" size={0}>
+            <Text strong>{formatCurrency(value)}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Before seat lock
+            </Text>
+          </Space>
+        ),
         sorter: true
       },
       {
@@ -209,7 +216,7 @@ export const FlightListPage = () => {
       <PageHeader
         eyebrow="Flight ops"
         title="Danh sách chuyến bay"
-        subtitle="Table-first on desktop, card-first on mobile. Mỗi record nhấn mạnh route, schedule, fare và trạng thái thay vì chỉ hiện cột thô."
+        subtitle="Table-first on desktop, card-first on mobile. Mỗi record nhấn mạnh route, schedule, base fare và trạng thái thay vì chỉ hiện cột thô."
         meta={formatQuerySyncLabel(lastUpdatedAt)}
         extra={
           isAdmin() ? (

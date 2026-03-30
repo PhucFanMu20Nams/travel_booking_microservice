@@ -554,6 +554,7 @@ export const DashboardPage = () => {
                                 label={flightStatusLabels[item.flightStatus]}
                                 tone={getFlightStatusTone(item.flightStatus)}
                               />
+                              <Text type="secondary">Base fare</Text>
                               <Text strong>{formatCurrency(item.price)}</Text>
                             </Space>
                           </div>

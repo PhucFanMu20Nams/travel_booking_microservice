@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReserveSeatRequestDto = exports.SeatDto = exports.FlightDto = exports.SeatReleaseRequested = exports.SeatReserved = exports.SeatCreated = exports.AirportCreated = exports.AircraftCreated = exports.FlightCreated = exports.SeatReleaseReason = exports.SeatType = exports.SeatClass = exports.FlightStatus = void 0;
+exports.ReserveSeatRequestDto = exports.SeatDto = exports.FlightDto = exports.SeatReleaseRequested = exports.SeatReserved = exports.SeatCreated = exports.AirportCreated = exports.AircraftCreated = exports.FlightCreated = exports.PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE = exports.PREMIUM_SEAT_SELECTION_REQUIRED_CODE = exports.SeatReleaseReason = exports.SeatType = exports.SeatClass = exports.FlightStatus = void 0;
 const class_validator_1 = require("class-validator");
 const validation_constants_1 = require("../validation/validation.constants");
 const validation_decorators_1 = require("../validation/validation.decorators");
@@ -43,6 +43,8 @@ var SeatReleaseReason;
     SeatReleaseReason[SeatReleaseReason["BOOKING_EXPIRED"] = 2] = "BOOKING_EXPIRED";
     SeatReleaseReason[SeatReleaseReason["PAYMENT_INTENT_CREATE_FAILED"] = 3] = "PAYMENT_INTENT_CREATE_FAILED";
 })(SeatReleaseReason || (exports.SeatReleaseReason = SeatReleaseReason = {}));
+exports.PREMIUM_SEAT_SELECTION_REQUIRED_CODE = 'PREMIUM_SEAT_SELECTION_REQUIRED';
+exports.PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE = 'Economy seats are sold out. Please select a premium seat to continue.';
 class FlightCreated {
     id;
     flightNumber;

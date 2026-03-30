@@ -1,9 +1,60 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
 import { bookingApi } from '@api/booking.api';
-import { PaginationParams, PagedResult } from '@/types/common.types';
+import { AppError, PaginationParams, PagedResult } from '@/types/common.types';
 import { BookingDto, CreateBookingRequest } from '@/types/booking.types';
 import { buildPaginationParams, normalizeProblemError } from '@utils/helpers';
+
+const HANDLED_CREATE_BOOKING_ERROR_CODES = new Set([
+  'ACTIVE_BOOKING_EXISTS',
+  'PREMIUM_SEAT_SELECTION_REQUIRED'
+]);
+const HANDLED_CREATE_BOOKING_ERROR_MESSAGES = new Set([
+  'An active booking already exists for this flight',
+  'Economy seats are sold out. Please select a premium seat to continue.'
+]);
+
+const getCreateBookingBusinessCode = (appError: AppError): string => {
+  const rawResponseData =
+    typeof appError.raw === 'object' &&
+    appError.raw !== null &&
+    'response' in appError.raw &&
+    typeof (appError.raw as { response?: { data?: unknown } }).response?.data === 'object' &&
+    (appError.raw as { response?: { data?: unknown } }).response?.data !== null
+      ? ((appError.raw as { response?: { data?: Record<string, unknown> } }).response?.data as Record<string, unknown>)
+      : null;
+
+  if (typeof rawResponseData?.code === 'string' && rawResponseData.code) {
+    return rawResponseData.code;
+  }
+
+  if (typeof appError.meta?.code === 'string' && appError.meta.code) {
+    return appError.meta.code;
+  }
+
+  return appError.code || '';
+};
+
+const getCreateBookingBusinessMessage = (appError: AppError): string => {
+  const rawResponseData =
+    typeof appError.raw === 'object' &&
+    appError.raw !== null &&
+    'response' in appError.raw &&
+    typeof (appError.raw as { response?: { data?: unknown } }).response?.data === 'object' &&
+    (appError.raw as { response?: { data?: unknown } }).response?.data !== null
+      ? ((appError.raw as { response?: { data?: Record<string, unknown> } }).response?.data as Record<string, unknown>)
+      : null;
+
+  if (typeof rawResponseData?.title === 'string' && rawResponseData.title) {
+    return rawResponseData.title;
+  }
+
+  if (typeof rawResponseData?.message === 'string' && rawResponseData.message) {
+    return rawResponseData.message;
+  }
+
+  return appError.message || '';
+};
 
 export const bookingKeys = {
   all: ['bookings'] as const,
@@ -58,6 +109,19 @@ export const useCreateBooking = () => {
     },
     onError: (error) => {
       const appError = normalizeProblemError(error);
+      const businessCode = getCreateBookingBusinessCode(appError);
+      const businessMessage = getCreateBookingBusinessMessage(appError);
+      const isGenericCreateBookingConflict =
+        appError.status === 409 && appError.message === 'Request failed with status code 409';
+
+      if (
+        isGenericCreateBookingConflict ||
+        HANDLED_CREATE_BOOKING_ERROR_CODES.has(businessCode) ||
+        HANDLED_CREATE_BOOKING_ERROR_MESSAGES.has(businessMessage)
+      ) {
+        return;
+      }
+
       message.error(appError.message || 'Đặt vé thất bại');
     }
   });

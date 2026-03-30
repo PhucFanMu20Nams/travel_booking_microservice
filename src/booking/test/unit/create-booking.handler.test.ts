@@ -1,8 +1,19 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { AxiosError } from 'axios';
 import { CreateBooking, CreateBookingHandler } from '@/booking/features/v1/create-booking/create-booking';
 import { BookingStatus } from '@/booking/enums/booking-status.enum';
 import { SeatClass } from '@/booking/enums/seat-class.enum';
-import { FlightStatus } from 'building-blocks/contracts/flight.contract';
+import {
+  FlightStatus,
+  PREMIUM_SEAT_SELECTION_REQUIRED_CODE,
+  PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE
+} from 'building-blocks/contracts/flight.contract';
+
+const buildUpstreamFlightError = (status: number, data: Record<string, unknown>) =>
+  new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_RESPONSE', undefined, undefined, {
+    status,
+    data
+  } as any);
 
 describe('CreateBookingHandler', () => {
   it('creates a pending checkout with the locked seat price instead of the base flight fare', async () => {
@@ -163,6 +174,146 @@ describe('CreateBookingHandler', () => {
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(flightClient.reserveSeat).not.toHaveBeenCalled();
+    expect(paymentClient.createPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it('maps upstream premium-required conflicts into a local ConflictException', async () => {
+    const bookingRepository = {
+      findActiveBookingByUserAndFlight: jest.fn().mockResolvedValue(null),
+      createBooking: jest.fn(),
+      updateBooking: jest.fn()
+    };
+    const flightClient = {
+      getFlightById: jest.fn().mockResolvedValue({
+        id: 7,
+        flightNumber: 'VN777',
+        price: 1500000,
+        flightStatus: FlightStatus.SCHEDULED,
+        flightDate: '2099-03-10T00:00:00.000Z',
+        departureDate: '2099-03-10T08:00:00.000Z'
+      }),
+      reserveSeat: jest.fn().mockRejectedValue(
+        buildUpstreamFlightError(409, {
+          title: PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE,
+          code: PREMIUM_SEAT_SELECTION_REQUIRED_CODE
+        })
+      )
+    };
+    const passengerClient = {
+      getPassengerByUserId: jest.fn().mockResolvedValue({
+        id: 11,
+        name: 'Nguyen Van A'
+      })
+    };
+    const paymentClient = {
+      createPaymentIntent: jest.fn(),
+      getPaymentById: jest.fn()
+    };
+    const idempotencyRepository = {
+      findByScopeAndKey: jest.fn().mockResolvedValue(null),
+      saveRecord: jest.fn()
+    };
+    const rabbitmqPublisher = {
+      publishMessage: jest.fn(),
+      isPublished: jest.fn()
+    };
+
+    const handler = new CreateBookingHandler(
+      bookingRepository as any,
+      flightClient as any,
+      passengerClient as any,
+      paymentClient as any,
+      idempotencyRepository as any,
+      rabbitmqPublisher as any
+    );
+
+    try {
+      await handler.execute(
+        new CreateBooking({
+          currentUserId: 42,
+          flightId: 7,
+          description: 'Auto assign',
+          idempotencyKey: 'booking-premium-required'
+        })
+      );
+      fail('Expected premium-required conflict');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toEqual({
+        message: PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE,
+        code: PREMIUM_SEAT_SELECTION_REQUIRED_CODE
+      });
+    }
+
+    expect(bookingRepository.createBooking).not.toHaveBeenCalled();
+    expect(paymentClient.createPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it('maps upstream sold-out 404 errors into a local NotFoundException', async () => {
+    const bookingRepository = {
+      findActiveBookingByUserAndFlight: jest.fn().mockResolvedValue(null),
+      createBooking: jest.fn(),
+      updateBooking: jest.fn()
+    };
+    const flightClient = {
+      getFlightById: jest.fn().mockResolvedValue({
+        id: 7,
+        flightNumber: 'VN777',
+        price: 1500000,
+        flightStatus: FlightStatus.SCHEDULED,
+        flightDate: '2099-03-10T00:00:00.000Z',
+        departureDate: '2099-03-10T08:00:00.000Z'
+      }),
+      reserveSeat: jest.fn().mockRejectedValue(
+        buildUpstreamFlightError(404, {
+          title: 'No seat available!'
+        })
+      )
+    };
+    const passengerClient = {
+      getPassengerByUserId: jest.fn().mockResolvedValue({
+        id: 11,
+        name: 'Nguyen Van A'
+      })
+    };
+    const paymentClient = {
+      createPaymentIntent: jest.fn(),
+      getPaymentById: jest.fn()
+    };
+    const idempotencyRepository = {
+      findByScopeAndKey: jest.fn().mockResolvedValue(null),
+      saveRecord: jest.fn()
+    };
+    const rabbitmqPublisher = {
+      publishMessage: jest.fn(),
+      isPublished: jest.fn()
+    };
+
+    const handler = new CreateBookingHandler(
+      bookingRepository as any,
+      flightClient as any,
+      passengerClient as any,
+      paymentClient as any,
+      idempotencyRepository as any,
+      rabbitmqPublisher as any
+    );
+
+    try {
+      await handler.execute(
+        new CreateBooking({
+          currentUserId: 42,
+          flightId: 7,
+          description: 'Auto assign',
+          idempotencyKey: 'booking-sold-out'
+        })
+      );
+      fail('Expected sold-out not found');
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as NotFoundException).message).toBe('No seat available!');
+    }
+
+    expect(bookingRepository.createBooking).not.toHaveBeenCalled();
     expect(paymentClient.createPaymentIntent).not.toHaveBeenCalled();
   });
 });

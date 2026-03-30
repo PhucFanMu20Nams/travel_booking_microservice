@@ -20,9 +20,10 @@ type BookingSummaryProps = {
 type SummaryItemProps = {
   label: string;
   value: string;
+  hint?: string;
 };
 
-const SummaryItem = ({ label, value }: SummaryItemProps) => (
+const SummaryItem = ({ label, value, hint }: SummaryItemProps) => (
   <div
     style={{
       padding: 14,
@@ -36,6 +37,11 @@ const SummaryItem = ({ label, value }: SummaryItemProps) => (
         {label}
       </Text>
       <Text strong>{value}</Text>
+      {hint ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {hint}
+        </Text>
+      ) : null}
     </Space>
   </div>
 );
@@ -71,8 +77,13 @@ export const BookingSummary = ({ flight, selectedSeat, passenger, airportsMap }:
           </Col>
           <Col xs={24} sm={12}>
             <SummaryItem
-              label="Fare"
+              label={selectedSeat ? 'Selected fare' : 'Base fare'}
               value={formatCurrency(selectedSeat?.price || flight.price, selectedSeat?.currency || 'VND')}
+              hint={
+                selectedSeat
+                  ? 'Exact seat price shown before checkout lock.'
+                  : 'Final total locks after seat assignment.'
+              }
             />
           </Col>
           <Col xs={24} sm={12}>
@@ -81,8 +92,9 @@ export const BookingSummary = ({ flight, selectedSeat, passenger, airportsMap }:
               value={
                 selectedSeat
                   ? `${selectedSeat.seatNumber} · ${seatClassLabels[selectedSeat.seatClass]} / ${seatTypeLabels[selectedSeat.seatType]}`
-                  : 'Backend auto-assign'
+                  : 'Auto-assign Economy'
               }
+              hint={selectedSeat ? undefined : 'Business and First Class require explicit selection.'}
             />
           </Col>
           <Col xs={24} sm={12}>

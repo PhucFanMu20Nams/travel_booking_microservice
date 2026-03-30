@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { message } from 'antd';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { CreateBookingPage } from '@pages/bookings/CreateBookingPage';
@@ -18,7 +19,11 @@ import {
   makeSeat,
   setAuthenticatedUser
 } from '@/test/frontend.fixtures';
-import { BookingStatus, FlightStatus, PaymentStatus } from '@/types/enums';
+import { BookingStatus, FlightStatus, PaymentStatus, SeatClass } from '@/types/enums';
+import { formatCurrency } from '@utils/format';
+
+const toCurrencyRegex = (amount: number, currency = 'VND') =>
+  new RegExp(formatCurrency(amount, currency).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
 
 const mockCreateBookingDependencies = ({
   flights,
@@ -95,6 +100,7 @@ describe('create booking flow', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('shows a warning and blocks the deep link flow for invalid flights', async () => {
@@ -242,6 +248,241 @@ describe('create booking flow', () => {
     },
     10000
   );
+
+  it('allows submitting without seat selection and presents flight.price as base fare', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN555', price: 1500000 });
+    const checkout = makeBookingCheckout(
+      {},
+      {
+        id: 77,
+        flightId: 1,
+        flightNumber: 'VN555',
+        seatNumber: '3A',
+        seatClass: SeatClass.ECONOMY,
+        price: 1500000,
+        paymentId: 701
+      },
+      {
+        id: 701,
+        bookingId: 77,
+        amount: 1500000,
+        paymentStatus: PaymentStatus.PENDING
+      }
+    );
+    const submittedPayloads: unknown[] = [];
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [
+        makeSeat({
+          id: 10,
+          flightId: 1,
+          seatNumber: '3A',
+          seatClass: SeatClass.ECONOMY,
+          price: 1500000
+        })
+      ]
+    });
+
+    server.use(
+      http.post('/api/v1/booking/create', async ({ request }) => {
+        submittedPayloads.push(await request.json());
+        return HttpResponse.json(checkout);
+      }),
+      http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(checkout.payment))
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create',
+      path: '/bookings/create'
+    });
+
+    expect((await screen.findAllByText('Base fare')).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Chọn chuyến' }));
+    expect(await screen.findByText('Có thể bỏ qua chọn ghế để auto-assign Economy')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+
+    expect((await screen.findAllByText('Base fare')).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('Final total sẽ được khóa sau khi ghế được gán. Business và First Class cần được chọn thủ công.')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+    await waitFor(() => {
+      expect(submittedPayloads).toEqual([
+        {
+          flightId: 1,
+          description: 'N/A'
+        }
+      ]);
+    });
+
+    expect(await screen.findByText('Locked total')).toBeInTheDocument();
+  });
+
+  it('keeps the user on seat selection for premium-required conflicts without showing the generic toast', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN654' });
+    const messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
+    const submittedPayloads: unknown[] = [];
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [
+        makeSeat({
+          id: 14,
+          flightId: 1,
+          seatNumber: '1A',
+          seatClass: SeatClass.BUSINESS,
+          price: 2625000
+        })
+      ]
+    });
+
+    server.use(
+      http.post('/api/v1/booking/create', async ({ request }) => {
+        submittedPayloads.push(await request.json());
+        return HttpResponse.json(
+          {
+            type: 'ConflictException',
+            title: 'Economy seats are sold out. Please select a premium seat to continue.',
+            status: 409,
+            code: 'PREMIUM_SEAT_SELECTION_REQUIRED'
+          },
+          { status: 409 }
+        );
+      })
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create',
+      path: '/bookings/create'
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+    await user.click(await screen.findByRole('button', { name: 'Tiếp tục review' }));
+    const submitButton = await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    await user.click(submitButton);
+    await waitFor(() => {
+      expect(submittedPayloads).toEqual([
+        {
+          flightId: 1,
+          description: 'N/A'
+        }
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(document.body).toHaveTextContent('Có thể bỏ qua chọn ghế để auto-assign Economy');
+      expect(document.body).toHaveTextContent('Economy seats are sold out. Please select a premium seat to continue.');
+      expect(document.body).toHaveTextContent(
+        'Vui lòng chọn một ghế Business hoặc First Class để tiếp tục và khóa đúng giá cuối cùng.'
+      );
+    });
+    expect(messageErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows the selected premium fare before checkout and keeps the locked premium total in payment', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN556', price: 1500000 });
+    const selectedSeat = makeSeat({
+      id: 15,
+      flightId: 1,
+      seatNumber: '1A',
+      seatClass: SeatClass.BUSINESS,
+      price: 2625000
+    });
+    const checkout = makeBookingCheckout(
+      {},
+      {
+        id: 78,
+        flightId: 1,
+        flightNumber: 'VN556',
+        seatNumber: '1A',
+        seatClass: SeatClass.BUSINESS,
+        price: 2625000,
+        paymentId: 702
+      },
+      {
+        id: 702,
+        bookingId: 78,
+        amount: 2625000,
+        paymentStatus: PaymentStatus.PENDING
+      }
+    );
+    const submittedPayloads: unknown[] = [];
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [selectedSeat]
+    });
+
+    server.use(
+      http.post('/api/v1/booking/create', async ({ request }) => {
+        submittedPayloads.push(await request.json());
+        return HttpResponse.json(checkout);
+      }),
+      http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(checkout.payment))
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create',
+      path: '/bookings/create'
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+    await user.click(await screen.findByRole('button', { name: '1A' }));
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+
+    expect((await screen.findAllByText('Selected fare')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Checkout sẽ khóa đúng giá của ghế 1A.')).toBeInTheDocument();
+    expect(screen.getAllByText(toCurrencyRegex(selectedSeat.price, selectedSeat.currency)).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+    await waitFor(() => {
+      expect(submittedPayloads).toEqual([
+        {
+          flightId: 1,
+          description: 'N/A',
+          seatNumber: '1A'
+        }
+      ]);
+    });
+
+    expect(await screen.findByText('Locked total')).toBeInTheDocument();
+    expect(screen.getAllByText(toCurrencyRegex(checkout.payment.amount, checkout.payment.currency)).length).toBeGreaterThan(0);
+  });
+
+  it('shows the sold-out warning and keeps review blocked when no seats are available', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN000' });
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: []
+    });
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create',
+      path: '/bookings/create'
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+
+    expect(await screen.findByText('Không có ghế trống cho chuyến bay này.')).toBeInTheDocument();
+    expect(screen.getByText('Có thể bỏ qua chọn ghế để auto-assign Economy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tiếp tục review' })).toBeDisabled();
+  });
 
   it('hydrates payment step when opening with bookingId deep-link', async () => {
     const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN678' });

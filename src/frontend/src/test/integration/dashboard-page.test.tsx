@@ -6,6 +6,10 @@ import { server } from '@/test/msw/server';
 import { renderWithRoute } from '@/test/utils';
 import { airports, makeBooking, makeFlight, setAuthenticatedUser } from '@/test/frontend.fixtures';
 import { BookingStatus, FlightStatus, Role } from '@/types/enums';
+import { formatCurrency } from '@utils/format';
+
+const toCurrencyRegex = (amount: number, currency = 'VND') =>
+  new RegExp(formatCurrency(amount, currency).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
 
 describe('dashboard page', () => {
   it('keeps query strip in Ready state when totals are zero', async () => {
@@ -99,6 +103,53 @@ describe('dashboard page', () => {
     renderWithRoute(<DashboardPage />, { route: '/dashboard', path: '/dashboard' });
 
     expect(await screen.findByText('VN777')).toBeInTheDocument();
+  });
+
+  it('labels upcoming flight prices as base fare', async () => {
+    setAuthenticatedUser({ role: Role.ADMIN });
+
+    const upcomingFlight = makeFlight({
+      id: 888,
+      flightNumber: 'VN888',
+      flightStatus: FlightStatus.SCHEDULED,
+      price: 1750000,
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/user/get', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      ),
+      http.get('/api/v1/passenger/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      ),
+      http.get('/api/v1/flight/get-all', () =>
+        HttpResponse.json({
+          result: [upcomingFlight],
+          total: 1
+        })
+      ),
+      http.get('/api/v1/booking/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      )
+    );
+
+    renderWithRoute(<DashboardPage />, { route: '/dashboard', path: '/dashboard' });
+
+    expect(await screen.findByText('VN888')).toBeInTheDocument();
+    expect(screen.getByText('Base fare')).toBeInTheDocument();
+    expect(screen.getByText(toCurrencyRegex(upcomingFlight.price))).toBeInTheDocument();
   });
 
   it('renders the non-admin flight snapshot directly from the shared flight list endpoint', async () => {

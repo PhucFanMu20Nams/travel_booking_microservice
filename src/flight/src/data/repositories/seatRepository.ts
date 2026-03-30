@@ -1,6 +1,7 @@
 import { EntityManager, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Seat } from '@/seat/entities/seat.entity';
+import { SeatClass } from '@/seat/enums/seat-class.enum';
 
 export interface ISeatRepository {
   ensureSeatInventory(
@@ -11,7 +12,11 @@ export interface ISeatRepository {
 
   createSeat(seat: Seat): Promise<Seat>;
 
-  reserveSeat(flightId: number, seatNumber?: string): Promise<Seat>;
+  reserveSeat(flightId: number, seatNumber: string): Promise<Seat | null>;
+
+  reserveEconomySeat(flightId: number): Promise<Seat | null>;
+
+  hasAvailablePremiumSeats(flightId: number): Promise<boolean>;
 
   releaseSeat(flightId: number, seatNumber: string): Promise<Seat>;
 
@@ -83,24 +88,24 @@ export class SeatRepository implements ISeatRepository {
     return await this.seatRepository.save(seat);
   }
 
-  async reserveSeat(flightId: number, seatNumber?: string): Promise<Seat> {
-    if (seatNumber) {
-      const reserveResult = await this.seatRepository
-        .createQueryBuilder()
-        .update(Seat)
-        .set({
-          isReserved: true,
-          updatedAt: () => 'CURRENT_TIMESTAMP'
-        })
-        .where('"flightId" = :flightId', { flightId })
-        .andWhere('"seatNumber" = :seatNumber', { seatNumber })
-        .andWhere('"isReserved" = false')
-        .returning('*')
-        .execute();
+  async reserveSeat(flightId: number, seatNumber: string): Promise<Seat | null> {
+    const reserveResult = await this.seatRepository
+      .createQueryBuilder()
+      .update(Seat)
+      .set({
+        isReserved: true,
+        updatedAt: () => 'CURRENT_TIMESTAMP'
+      })
+      .where('"flightId" = :flightId', { flightId })
+      .andWhere('"seatNumber" = :seatNumber', { seatNumber })
+      .andWhere('"isReserved" = false')
+      .returning('*')
+      .execute();
 
-      return this.mapRawSeat(reserveResult.raw?.[0]);
-    }
+    return this.mapRawSeat(reserveResult.raw?.[0]);
+  }
 
+  async reserveEconomySeat(flightId: number): Promise<Seat | null> {
     return await this.seatRepository.manager.transaction(async (entityManager) => {
       const rawSeat = await entityManager.query(
         `
@@ -108,6 +113,7 @@ export class SeatRepository implements ISeatRepository {
             SELECT "id"
             FROM "seat"
             WHERE "flightId" = $1
+              AND "seatClass" = $2
               AND "isReserved" = false
             ORDER BY "seatNumber" ASC
             FOR UPDATE SKIP LOCKED
@@ -119,11 +125,24 @@ export class SeatRepository implements ISeatRepository {
           WHERE "id" IN (SELECT "id" FROM candidate)
           RETURNING *
         `,
-        [flightId]
+        [flightId, String(SeatClass.ECONOMY)]
       );
 
       return this.mapRawSeat(rawSeat?.[0]);
     });
+  }
+
+  async hasAvailablePremiumSeats(flightId: number): Promise<boolean> {
+    const premiumCount = await this.seatRepository
+      .createQueryBuilder('seat')
+      .where('seat.flightId = :flightId', { flightId })
+      .andWhere('seat.isReserved = false')
+      .andWhere('seat.seatClass IN (:...premiumSeatClasses)', {
+        premiumSeatClasses: [String(SeatClass.FIRST_CLASS), String(SeatClass.BUSINESS)]
+      })
+      .getCount();
+
+    return premiumCount > 0;
   }
 
   async releaseSeat(flightId: number, seatNumber: string): Promise<Seat> {
