@@ -15,6 +15,7 @@ import { WalletLedger } from '@/payment/entities/wallet-ledger.entity';
 import { PaymentRepository } from '@/payment/repositories/payment.repository';
 import { IdempotencyRepository } from '@/payment/repositories/idempotency.repository';
 import { ProcessedMessageRepository } from '@/payment/repositories/processed-message.repository';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
 import {
   CreatePaymentIntentController,
   CreatePaymentIntentHandler
@@ -41,6 +42,7 @@ import {
 } from '@/payment/features/v1/get-payment-summaries-by-ids/get-payment-summaries-by-ids';
 import { PaymentRefundRequestedConsumerHandler } from '@/payment/consumers/payment-refund-requested.consumer';
 import { PaymentExpiryScheduler } from '@/payment/scheduler/payment-expiry.scheduler';
+import { PaymentOutboxDispatcherService } from '@/payment/services/payment-outbox-dispatcher.service';
 import {
   ApproveWalletTopupRequestHandler,
   CreateWalletTopupRequestHandler,
@@ -62,6 +64,7 @@ import {
       Refund,
       IdempotencyRecord,
       ProcessedMessage,
+      OutboxMessage,
       Wallet,
       WalletTopupRequest,
       WalletLedger
@@ -92,6 +95,7 @@ import {
     PayBookingWithWalletHandler,
     PaymentRefundRequestedConsumerHandler,
     PaymentExpiryScheduler,
+    PaymentOutboxDispatcherService,
     {
       provide: 'IPaymentRepository',
       useClass: PaymentRepository
@@ -109,11 +113,13 @@ import {
 export class PaymentModule implements OnApplicationBootstrap {
   constructor(
     @Inject('IRabbitmqConsumer') private readonly rabbitmqConsumer: IRabbitmqConsumer,
-    private readonly paymentRefundRequestedConsumerHandler: PaymentRefundRequestedConsumerHandler
+    private readonly paymentRefundRequestedConsumerHandler: PaymentRefundRequestedConsumerHandler,
+    private readonly paymentOutboxDispatcherService: PaymentOutboxDispatcherService
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.rabbitmqConsumer.consumeMessage(
+    void this.paymentOutboxDispatcherService;
+    void this.rabbitmqConsumer.consumeMessage(
       PaymentRefundRequested,
       this.paymentRefundRequestedConsumerHandler.handle.bind(this.paymentRefundRequestedConsumerHandler)
     );

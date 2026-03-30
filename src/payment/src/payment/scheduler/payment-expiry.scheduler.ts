@@ -1,15 +1,16 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { IPaymentRepository } from '@/payment/repositories/payment.repository';
-import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
+import { DataSource, LessThanOrEqual, In } from 'typeorm';
 import { PaymentExpired, PaymentStatus } from 'building-blocks/contracts/payment.contract';
+import { PaymentIntent } from '@/payment/entities/payment-intent.entity';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
+import { prepareOutboxMessage } from 'building-blocks/rabbitmq/outbox-message';
 
 @Injectable()
 export class PaymentExpiryScheduler implements OnModuleInit, OnModuleDestroy {
   private intervalRef?: NodeJS.Timeout;
 
   constructor(
-    @Inject('IPaymentRepository') private readonly paymentRepository: IPaymentRepository,
-    @Inject('IRabbitmqPublisher') private readonly rabbitmqPublisher: IRabbitmqPublisher
+    private readonly dataSource: DataSource
   ) {}
 
   onModuleInit(): void {
@@ -29,27 +30,53 @@ export class PaymentExpiryScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   private async expirePendingPayments(): Promise<void> {
-    const expiredCandidates = await this.paymentRepository.findExpiredCandidates(new Date());
+    const expiredCandidates = await this.dataSource.getRepository(PaymentIntent).find({
+      where: {
+        expiresAt: LessThanOrEqual(new Date()),
+        paymentStatus: In([PaymentStatus.PENDING, PaymentStatus.PROCESSING, PaymentStatus.FAILED])
+      },
+      relations: ['attempts', 'refunds']
+    });
 
     for (const payment of expiredCandidates) {
-      if (payment.paymentStatus === PaymentStatus.EXPIRED) {
-        continue;
-      }
-
-      payment.paymentStatus = PaymentStatus.EXPIRED;
-      payment.updatedAt = new Date();
-
-      const updatedPayment = await this.paymentRepository.updatePaymentIntent(payment);
-
       try {
-        await this.rabbitmqPublisher.publishMessage(
-          new PaymentExpired({
-            paymentId: updatedPayment.id,
-            bookingId: updatedPayment.bookingId,
-            userId: updatedPayment.userId,
-            occurredAt: new Date()
-          })
-        );
+        await this.dataSource.transaction(async (manager) => {
+          const paymentRepository = manager.getRepository(PaymentIntent);
+          const lockedPayment = await paymentRepository
+            .createQueryBuilder('payment')
+            .setLock('pessimistic_write')
+            .where('payment.id = :id', { id: payment.id })
+            .getOne();
+
+          if (
+            !lockedPayment ||
+            ![PaymentStatus.PENDING, PaymentStatus.PROCESSING, PaymentStatus.FAILED].includes(
+              lockedPayment.paymentStatus
+            ) ||
+            new Date(lockedPayment.expiresAt) > new Date()
+          ) {
+            return;
+          }
+
+          const occurredAt = new Date();
+          lockedPayment.paymentStatus = PaymentStatus.EXPIRED;
+          lockedPayment.updatedAt = occurredAt;
+          await paymentRepository.save(lockedPayment);
+
+          await manager.getRepository(OutboxMessage).insert(
+            prepareOutboxMessage(
+              new PaymentExpired({
+                paymentId: lockedPayment.id,
+                bookingId: lockedPayment.bookingId,
+                userId: lockedPayment.userId,
+                occurredAt
+              }),
+              {
+                occurredAt
+              }
+            )
+          );
+        });
       } catch (error) {
         Logger.error(error);
       }

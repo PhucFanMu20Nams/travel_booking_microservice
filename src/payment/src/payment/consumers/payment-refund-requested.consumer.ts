@@ -7,14 +7,16 @@ import {
   PaymentStatus,
   RefundStatus
 } from 'building-blocks/contracts/payment.contract';
+import { prepareOutboxMessage } from 'building-blocks/rabbitmq/outbox-message';
 import { Refund } from '@/payment/entities/refund.entity';
-import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
 import { IProcessedMessageRepository } from '@/payment/repositories/processed-message.repository';
 import { Wallet } from '@/payment/entities/wallet.entity';
 import { WalletLedger } from '@/payment/entities/wallet-ledger.entity';
 import { WalletLedgerType } from '@/payment/enums/wallet-ledger-type.enum';
 import { WalletLedgerReferenceType } from '@/payment/enums/wallet-ledger-reference-type.enum';
 import { PaymentIntent } from '@/payment/entities/payment-intent.entity';
+import { ProcessedMessage } from '@/payment/entities/processed-message.entity';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
 
 const WALLET_CURRENCY = 'VND';
 
@@ -22,7 +24,6 @@ const WALLET_CURRENCY = 'VND';
 export class PaymentRefundRequestedConsumerHandler {
   constructor(
     @Inject('IProcessedMessageRepository') private readonly processedMessageRepository: IProcessedMessageRepository,
-    @Inject('IRabbitmqPublisher') private readonly rabbitmqPublisher: IRabbitmqPublisher,
     private readonly dataSource: DataSource
   ) {}
 
@@ -32,16 +33,25 @@ export class PaymentRefundRequestedConsumerHandler {
     envelope?: RabbitmqMessageEnvelope<PaymentRefundRequested> | null
   ): Promise<void> {
     const messageKey = envelope?.messageId || envelope?.idempotencyKey;
-    const isFreshMessage = await this.processedMessageRepository.registerProcessedMessage(
-      PaymentRefundRequestedConsumerHandler.name,
-      messageKey
-    );
+    const consumer = PaymentRefundRequestedConsumerHandler.name;
 
-    if (!isFreshMessage) {
+    if (await this.processedMessageRepository.hasProcessedMessage(consumer, messageKey)) {
       return;
     }
 
     const refundResult = await this.dataSource.transaction(async (manager) => {
+      const processedMessageRepository = manager.getRepository(ProcessedMessage);
+      const existingProcessedMessage = messageKey
+        ? await processedMessageRepository.findOneBy({
+            consumer,
+            messageKey
+          })
+        : null;
+
+      if (existingProcessedMessage) {
+        return null;
+      }
+
       const paymentRepository = manager.getRepository(PaymentIntent);
       const walletLedgerRepository = manager.getRepository(WalletLedger);
       const payment = await paymentRepository
@@ -97,7 +107,7 @@ export class PaymentRefundRequestedConsumerHandler {
       payment.updatedAt = now;
       await paymentRepository.save(payment);
 
-      return {
+      const result = {
         paymentId: payment.id,
         bookingId: payment.bookingId,
         refundId: refund.id,
@@ -106,13 +116,27 @@ export class PaymentRefundRequestedConsumerHandler {
         currency: payment.currency,
         occurredAt: now
       };
+
+      await manager.getRepository(OutboxMessage).insert(
+        prepareOutboxMessage(new PaymentRefunded(result), {
+          occurredAt: now
+        })
+      );
+
+      if (messageKey) {
+        await processedMessageRepository.insert({
+          consumer,
+          messageKey,
+          createdAt: new Date()
+        });
+      }
+
+      return result;
     });
 
     if (!refundResult) {
       return;
     }
-
-    await this.rabbitmqPublisher.publishMessage(new PaymentRefunded(refundResult));
   }
 
   private async ensureWalletForUpdate(manager: EntityManager, userId: number): Promise<Wallet> {

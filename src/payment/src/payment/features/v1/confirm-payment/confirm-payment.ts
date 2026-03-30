@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { Request, Response } from 'express';
+import { DataSource } from 'typeorm';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import {
   ConfirmPaymentRequestDto,
@@ -25,6 +26,7 @@ import {
   PaymentStatus,
   PaymentSucceeded
 } from 'building-blocks/contracts/payment.contract';
+import { prepareOutboxMessage } from 'building-blocks/rabbitmq/outbox-message';
 import { Role } from 'building-blocks/contracts/identity.contract';
 import { IPaymentRepository } from '@/payment/repositories/payment.repository';
 import { PaymentAttempt } from '@/payment/entities/payment-attempt.entity';
@@ -32,7 +34,8 @@ import { toPaymentDto } from '@/payment/utils/payment.mapper';
 import { IIdempotencyRepository } from '@/payment/repositories/idempotency.repository';
 import { IdempotencyRecord } from '@/payment/entities/idempotency-record.entity';
 import { createRequestHash } from '@/payment/utils/request-hash';
-import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
+import { PaymentIntent } from '@/payment/entities/payment-intent.entity';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
 
 type JwtRequest = Request & {
   user?: {
@@ -107,7 +110,7 @@ export class ConfirmPaymentHandler implements ICommandHandler<ConfirmPayment> {
   constructor(
     @Inject('IPaymentRepository') private readonly paymentRepository: IPaymentRepository,
     @Inject('IIdempotencyRepository') private readonly idempotencyRepository: IIdempotencyRepository,
-    @Inject('IRabbitmqPublisher') private readonly rabbitmqPublisher: IRabbitmqPublisher
+    private readonly dataSource: DataSource
   ) {}
 
   async execute(command: ConfirmPayment): Promise<PaymentDto> {
@@ -191,56 +194,129 @@ export class ConfirmPaymentHandler implements ICommandHandler<ConfirmPayment> {
       nextStatus = PaymentStatus.PROCESSING;
     }
 
-    await this.paymentRepository.createAttempt(
-      new PaymentAttempt({
-        paymentId: payment.id,
-        scenario: command.scenario,
-        paymentStatus: nextStatus
-      })
-    );
+    const result = await this.dataSource.transaction(async (manager) => {
+      const paymentRepository = manager.getRepository(PaymentIntent);
+      const idempotencyRepository = manager.getRepository(IdempotencyRecord);
+      const outboxRepository = manager.getRepository(OutboxMessage);
+      const lockedPayment = await paymentRepository
+        .createQueryBuilder('payment')
+        .setLock('pessimistic_write')
+        .where('payment.id = :id', { id: command.id })
+        .getOne();
 
-    payment.paymentStatus = nextStatus;
-    payment.updatedAt = now;
+      if (!lockedPayment) {
+        throw new BadRequestException('Payment not found');
+      }
 
-    const updatedPayment = await this.paymentRepository.updatePaymentIntent(payment);
+      if (lockedPayment.paymentStatus === PaymentStatus.PROCESSING) {
+        throw new ConflictException('Payment is still processing');
+      }
 
-    if (nextStatus === PaymentStatus.SUCCEEDED) {
-      await this.rabbitmqPublisher.publishMessage(
-        new PaymentSucceeded({
-          paymentId: updatedPayment.id,
-          bookingId: updatedPayment.bookingId,
-          userId: updatedPayment.userId,
-          amount: updatedPayment.amount,
-          currency: updatedPayment.currency,
-          occurredAt: now
-        })
-      );
-    }
+      if (
+        lockedPayment.paymentStatus !== PaymentStatus.SUCCEEDED &&
+        lockedPayment.paymentStatus !== PaymentStatus.EXPIRED &&
+        lockedPayment.expiresAt <= new Date()
+      ) {
+        lockedPayment.paymentStatus = PaymentStatus.EXPIRED;
+        lockedPayment.updatedAt = new Date();
+        const expiredPayment = await paymentRepository.save(lockedPayment);
+        const expiredDto = toPaymentDto(expiredPayment);
 
-    if (nextStatus === PaymentStatus.FAILED) {
-      await this.rabbitmqPublisher.publishMessage(
-        new PaymentFailed({
-          paymentId: updatedPayment.id,
-          bookingId: updatedPayment.bookingId,
-          userId: updatedPayment.userId,
+        await idempotencyRepository.save(
+          new IdempotencyRecord({
+            scope: idempotencyScope,
+            idempotencyKey: command.idempotencyKey,
+            requestHash,
+            userId: command.currentUserId,
+            responseBody: JSON.stringify(expiredDto),
+            statusCode: HttpStatus.OK
+          })
+        );
+
+        return expiredDto;
+      }
+
+      if (
+        lockedPayment.paymentStatus === PaymentStatus.SUCCEEDED ||
+        lockedPayment.paymentStatus === PaymentStatus.EXPIRED
+      ) {
+        const currentDto = toPaymentDto(lockedPayment);
+        await idempotencyRepository.save(
+          new IdempotencyRecord({
+            scope: idempotencyScope,
+            idempotencyKey: command.idempotencyKey,
+            requestHash,
+            userId: command.currentUserId,
+            responseBody: JSON.stringify(currentDto),
+            statusCode: HttpStatus.OK
+          })
+        );
+
+        return currentDto;
+      }
+
+      await manager.getRepository(PaymentAttempt).save(
+        new PaymentAttempt({
+          paymentId: lockedPayment.id,
           scenario: command.scenario,
-          occurredAt: now
+          paymentStatus: nextStatus
         })
       );
-    }
 
-    const result = toPaymentDto(updatedPayment);
+      lockedPayment.paymentStatus = nextStatus;
+      lockedPayment.updatedAt = now;
 
-    await this.idempotencyRepository.saveRecord(
-      new IdempotencyRecord({
-        scope: idempotencyScope,
-        idempotencyKey: command.idempotencyKey,
-        requestHash,
-        userId: command.currentUserId,
-        responseBody: JSON.stringify(result),
-        statusCode: HttpStatus.OK
-      })
-    );
+      const updatedPayment = await paymentRepository.save(lockedPayment);
+
+      if (nextStatus === PaymentStatus.SUCCEEDED) {
+        await outboxRepository.insert(
+          prepareOutboxMessage(
+            new PaymentSucceeded({
+              paymentId: updatedPayment.id,
+              bookingId: updatedPayment.bookingId,
+              userId: updatedPayment.userId,
+              amount: updatedPayment.amount,
+              currency: updatedPayment.currency,
+              occurredAt: now
+            }),
+            {
+              occurredAt: now
+            }
+          )
+        );
+      }
+
+      if (nextStatus === PaymentStatus.FAILED) {
+        await outboxRepository.insert(
+          prepareOutboxMessage(
+            new PaymentFailed({
+              paymentId: updatedPayment.id,
+              bookingId: updatedPayment.bookingId,
+              userId: updatedPayment.userId,
+              scenario: command.scenario,
+              occurredAt: now
+            }),
+            {
+              occurredAt: now
+            }
+          )
+        );
+      }
+
+      const dto = toPaymentDto(updatedPayment);
+      await idempotencyRepository.save(
+        new IdempotencyRecord({
+          scope: idempotencyScope,
+          idempotencyKey: command.idempotencyKey,
+          requestHash,
+          userId: command.currentUserId,
+          responseBody: JSON.stringify(dto),
+          statusCode: HttpStatus.OK
+        })
+      );
+
+      return dto;
+    });
 
     return result;
   }

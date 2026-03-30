@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { Request } from 'express';
+import { DataSource } from 'typeorm';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import {
   ManualReconcilePaymentRequestDto,
@@ -19,13 +20,15 @@ import {
   PaymentStatus,
   PaymentSucceeded
 } from 'building-blocks/contracts/payment.contract';
+import { prepareOutboxMessage } from 'building-blocks/rabbitmq/outbox-message';
 import { Role } from 'building-blocks/contracts/identity.contract';
 import { IPaymentRepository } from '@/payment/repositories/payment.repository';
 import { toPaymentDto } from '@/payment/utils/payment.mapper';
 import { extractPaymentCode } from '@/payment/utils/payment-code';
-import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
 import { PaymentAttempt } from '@/payment/entities/payment-attempt.entity';
 import { FakePaymentScenario } from '@/payment/enums/fake-payment-scenario.enum';
+import { PaymentIntent } from '@/payment/entities/payment-intent.entity';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
 
 type JwtRequest = Request & {
   user?: {
@@ -88,7 +91,7 @@ export class ManualReconcilePaymentController {
 export class ManualReconcilePaymentHandler implements ICommandHandler<ManualReconcilePayment> {
   constructor(
     @Inject('IPaymentRepository') private readonly paymentRepository: IPaymentRepository,
-    @Inject('IRabbitmqPublisher') private readonly rabbitmqPublisher: IRabbitmqPublisher
+    private readonly dataSource: DataSource
   ) {}
 
   async execute(command: ManualReconcilePayment): Promise<ManualReconcilePaymentResponseDto> {
@@ -140,34 +143,60 @@ export class ManualReconcilePaymentHandler implements ICommandHandler<ManualReco
     }
 
     const now = new Date();
-    await this.paymentRepository.createAttempt(
-      new PaymentAttempt({
-        paymentId: payment.id,
-        scenario: FakePaymentScenario.SUCCESS,
-        paymentStatus: PaymentStatus.SUCCEEDED
-      })
-    );
+    const updatedPayment = await this.dataSource.transaction(async (manager) => {
+      const paymentRepository = manager.getRepository(PaymentIntent);
+      const outboxRepository = manager.getRepository(OutboxMessage);
+      const lockedPayment = await paymentRepository
+        .createQueryBuilder('payment')
+        .setLock('pessimistic_write')
+        .where('payment.id = :id', { id: payment.id })
+        .getOne();
 
-    payment.paymentStatus = PaymentStatus.SUCCEEDED;
-    payment.completedAt = transferredAt;
-    payment.providerTxnId = providerTxnId;
-    payment.providerTransferContent = command.transferContent.trim();
-    payment.providerTransferredAmount = Number(command.transferredAmount);
-    payment.reconciledAt = now;
-    payment.reconciledBy = command.currentUserId;
-    payment.updatedAt = now;
+      if (!lockedPayment) {
+        throw new ForbiddenException('Payment no longer available for reconciliation');
+      }
 
-    const updatedPayment = await this.paymentRepository.updatePaymentIntent(payment);
-    await this.rabbitmqPublisher.publishMessage(
-      new PaymentSucceeded({
-        paymentId: updatedPayment.id,
-        bookingId: updatedPayment.bookingId,
-        userId: updatedPayment.userId,
-        amount: updatedPayment.amount,
-        currency: updatedPayment.currency,
-        occurredAt: transferredAt
-      })
-    );
+      if (lockedPayment.paymentStatus === PaymentStatus.SUCCEEDED || !!lockedPayment.providerTxnId) {
+        return lockedPayment;
+      }
+
+      await manager.getRepository(PaymentAttempt).save(
+        new PaymentAttempt({
+          paymentId: lockedPayment.id,
+          scenario: FakePaymentScenario.SUCCESS,
+          paymentStatus: PaymentStatus.SUCCEEDED
+        })
+      );
+
+      lockedPayment.paymentStatus = PaymentStatus.SUCCEEDED;
+      lockedPayment.completedAt = transferredAt;
+      lockedPayment.providerTxnId = providerTxnId;
+      lockedPayment.providerTransferContent = command.transferContent.trim();
+      lockedPayment.providerTransferredAmount = Number(command.transferredAmount);
+      lockedPayment.reconciledAt = now;
+      lockedPayment.reconciledBy = command.currentUserId;
+      lockedPayment.updatedAt = now;
+
+      const savedPayment = await paymentRepository.save(lockedPayment);
+
+      await outboxRepository.insert(
+        prepareOutboxMessage(
+          new PaymentSucceeded({
+            paymentId: savedPayment.id,
+            bookingId: savedPayment.bookingId,
+            userId: savedPayment.userId,
+            amount: savedPayment.amount,
+            currency: savedPayment.currency,
+            occurredAt: transferredAt
+          }),
+          {
+            occurredAt: transferredAt
+          }
+        )
+      );
+
+      return savedPayment;
+    });
 
     return new ManualReconcilePaymentResponseDto({
       result: ManualReconcileResult.CREDITED,

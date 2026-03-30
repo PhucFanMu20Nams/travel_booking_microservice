@@ -32,6 +32,7 @@ import {
   WalletPayBookingResponseDto,
   WalletTopupRequestDto
 } from 'building-blocks/contracts/payment.contract';
+import { prepareOutboxMessage } from 'building-blocks/rabbitmq/outbox-message';
 import { Wallet } from '@/payment/entities/wallet.entity';
 import { WalletTopupRequest } from '@/payment/entities/wallet-topup-request.entity';
 import { WalletLedger } from '@/payment/entities/wallet-ledger.entity';
@@ -43,9 +44,9 @@ import { toWalletDto, toWalletTopupRequestDto } from '@/payment/utils/wallet.map
 import { PaymentIntent } from '@/payment/entities/payment-intent.entity';
 import { PaymentAttempt } from '@/payment/entities/payment-attempt.entity';
 import { FakePaymentScenario } from '@/payment/enums/fake-payment-scenario.enum';
-import { IRabbitmqPublisher } from 'building-blocks/rabbitmq/rabbitmq-publisher';
 import { WalletTopupRequestsQueryDto } from '@/payment/dtos/wallet-topup-requests-query.dto';
 import { WalletTopupRequestStatus as WalletTopupRequestStatusEntity } from '@/payment/enums/wallet-topup-request-status.enum';
+import { OutboxMessage } from '@/payment/entities/outbox-message.entity';
 
 type JwtRequest = Request & {
   user?: {
@@ -544,24 +545,19 @@ export class RejectWalletTopupRequestHandler implements ICommandHandler<RejectWa
 export class PayBookingWithWalletHandler implements ICommandHandler<PayBookingWithWallet> {
   constructor(
     private readonly dataSource: DataSource,
-    @Inject('IPaymentRepository') private readonly paymentRepository: IPaymentRepository,
-    @Inject('IRabbitmqPublisher') private readonly rabbitmqPublisher: IRabbitmqPublisher
+    @Inject('IPaymentRepository') private readonly paymentRepository: IPaymentRepository
   ) {}
 
   async execute(command: PayBookingWithWallet): Promise<WalletPayBookingResponseDto> {
     let updatedPaymentId = 0;
     let walletSnapshot: Wallet = null;
-    let shouldPublishPaymentSucceeded = false;
-    let paymentSucceededOccurredAt: Date | null = null;
-    let shouldPublishPaymentExpired = false;
-    let paymentExpiredOccurredAt: Date | null = null;
-    let expiredPaymentMeta: { paymentId: number; bookingId: number; userId: number } | null = null;
     let paymentExpiredException: BadRequestException | null = null;
 
     await this.dataSource.transaction(async (manager) => {
       const paymentRepository = manager.getRepository(PaymentIntent);
       const paymentAttemptRepository = manager.getRepository(PaymentAttempt);
       const walletLedgerRepository = manager.getRepository(WalletLedger);
+      const outboxRepository = manager.getRepository(OutboxMessage);
       const now = new Date();
 
       const payment = await this.getPaymentForUpdate(manager, command.paymentId);
@@ -579,13 +575,20 @@ export class PayBookingWithWalletHandler implements ICommandHandler<PayBookingWi
         payment.updatedAt = now;
         await paymentRepository.save(payment);
 
-        shouldPublishPaymentExpired = true;
-        paymentExpiredOccurredAt = now;
-        expiredPaymentMeta = {
-          paymentId: payment.id,
-          bookingId: payment.bookingId,
-          userId: payment.userId
-        };
+        await outboxRepository.insert(
+          prepareOutboxMessage(
+            new PaymentExpired({
+              paymentId: payment.id,
+              bookingId: payment.bookingId,
+              userId: payment.userId,
+              occurredAt: now
+            }),
+            {
+              occurredAt: now
+            }
+          )
+        );
+
         paymentExpiredException = createBadRequest('PAYMENT_EXPIRED', 'Phiên thanh toán đã hết hạn');
         updatedPaymentId = payment.id;
         walletSnapshot = await this.ensureWalletForUpdate(manager, command.currentUserId);
@@ -652,39 +655,28 @@ export class PayBookingWithWalletHandler implements ICommandHandler<PayBookingWi
 
       await paymentRepository.save(payment);
       updatedPaymentId = payment.id;
-      shouldPublishPaymentSucceeded = true;
-      paymentSucceededOccurredAt = now;
-    });
-
-    if (shouldPublishPaymentExpired && expiredPaymentMeta && paymentExpiredOccurredAt) {
-      await this.rabbitmqPublisher.publishMessage(
-        new PaymentExpired({
-          paymentId: expiredPaymentMeta.paymentId,
-          bookingId: expiredPaymentMeta.bookingId,
-          userId: expiredPaymentMeta.userId,
-          occurredAt: paymentExpiredOccurredAt
-        })
+      await outboxRepository.insert(
+        prepareOutboxMessage(
+          new PaymentSucceeded({
+            paymentId: payment.id,
+            bookingId: payment.bookingId,
+            userId: payment.userId,
+            amount: payment.amount,
+            currency: payment.currency,
+            occurredAt: now
+          }),
+          {
+            occurredAt: now
+          }
+        )
       );
-    }
+    });
 
     if (paymentExpiredException) {
       throw paymentExpiredException;
     }
 
     const payment = await this.paymentRepository.findPaymentById(updatedPaymentId);
-
-    if (shouldPublishPaymentSucceeded && paymentSucceededOccurredAt) {
-      await this.rabbitmqPublisher.publishMessage(
-        new PaymentSucceeded({
-          paymentId: payment.id,
-          bookingId: payment.bookingId,
-          userId: payment.userId,
-          amount: payment.amount,
-          currency: payment.currency,
-          occurredAt: paymentSucceededOccurredAt
-        })
-      );
-    }
 
     return new WalletPayBookingResponseDto({
       payment: toPaymentDto(payment),
