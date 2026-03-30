@@ -88,7 +88,8 @@ let RabbitmqConsumer = class RabbitmqConsumer {
                         common_1.Logger.error((0, serilization_1.serializeObject)({
                             exchange: exchangeName,
                             queue: q.queue,
-                            messageId: message.properties.messageId,
+                            messageId: this.resolveMessageId(message.properties.messageId, messageContent),
+                            userId: this.extractUserId(messageContent),
                             content: messageContent,
                             error: error instanceof Error ? error.message : String(error)
                         }));
@@ -156,6 +157,40 @@ let RabbitmqConsumer = class RabbitmqConsumer {
             return type;
         }
         return type.constructor;
+    }
+    resolveMessageId(fallbackMessageId, content) {
+        const rawMessage = this.tryDeserializeMessage(content);
+        if (rawMessage &&
+            typeof rawMessage === 'object' &&
+            'messageId' in rawMessage &&
+            typeof rawMessage.messageId === 'string') {
+            return rawMessage.messageId;
+        }
+        return fallbackMessageId || 'unknown';
+    }
+    extractUserId(content) {
+        const rawMessage = this.tryDeserializeMessage(content);
+        if (!rawMessage || typeof rawMessage !== 'object') {
+            return undefined;
+        }
+        if ('payload' in rawMessage && rawMessage.payload && typeof rawMessage.payload === 'object') {
+            const payload = rawMessage.payload;
+            if (typeof payload.id === 'number' || typeof payload.id === 'string') {
+                return payload.id;
+            }
+        }
+        if ('id' in rawMessage && (typeof rawMessage.id === 'number' || typeof rawMessage.id === 'string')) {
+            return rawMessage.id;
+        }
+        return undefined;
+    }
+    tryDeserializeMessage(content) {
+        try {
+            return (0, serilization_1.deserializeObject)(content);
+        }
+        catch {
+            return null;
+        }
     }
 };
 exports.RabbitmqConsumer = RabbitmqConsumer;

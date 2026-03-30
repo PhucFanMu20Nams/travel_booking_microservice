@@ -111,7 +111,8 @@ export class RabbitmqConsumer<T> implements IRabbitmqConsumer {
                   serializeObject({
                     exchange: exchangeName,
                     queue: q.queue,
-                    messageId: message.properties.messageId,
+                    messageId: this.resolveMessageId(message.properties.messageId, messageContent),
+                    userId: this.extractUserId(messageContent),
                     content: messageContent,
                     error: error instanceof Error ? error.message : String(error)
                   })
@@ -199,5 +200,53 @@ export class RabbitmqConsumer<T> implements IRabbitmqConsumer {
     }
 
     return (type as T & { constructor: ClassConstructor<T> }).constructor;
+  }
+
+  private resolveMessageId(
+    fallbackMessageId: string | undefined,
+    content: string
+  ): string {
+    const rawMessage = this.tryDeserializeMessage(content);
+
+    if (
+      rawMessage &&
+      typeof rawMessage === 'object' &&
+      'messageId' in rawMessage &&
+      typeof rawMessage.messageId === 'string'
+    ) {
+      return rawMessage.messageId;
+    }
+
+    return fallbackMessageId || 'unknown';
+  }
+
+  private extractUserId(content: string): number | string | undefined {
+    const rawMessage = this.tryDeserializeMessage(content);
+
+    if (!rawMessage || typeof rawMessage !== 'object') {
+      return undefined;
+    }
+
+    if ('payload' in rawMessage && rawMessage.payload && typeof rawMessage.payload === 'object') {
+      const payload = rawMessage.payload as Record<string, unknown>;
+
+      if (typeof payload.id === 'number' || typeof payload.id === 'string') {
+        return payload.id;
+      }
+    }
+
+    if ('id' in rawMessage && (typeof rawMessage.id === 'number' || typeof rawMessage.id === 'string')) {
+      return rawMessage.id;
+    }
+
+    return undefined;
+  }
+
+  private tryDeserializeMessage(content: string): Record<string, unknown> | null {
+    try {
+      return deserializeObject<Record<string, unknown>>(content);
+    } catch {
+      return null;
+    }
   }
 }
