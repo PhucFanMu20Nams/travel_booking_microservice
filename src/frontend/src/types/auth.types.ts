@@ -1,6 +1,17 @@
+import { PassengerType } from '@/types/enums';
+
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+  passportNumber: string;
+  age: number;
+  passengerType: PassengerType;
 }
 
 export interface TokenDto {

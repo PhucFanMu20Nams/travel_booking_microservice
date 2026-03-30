@@ -3,6 +3,7 @@ import { ProtectedRoute } from '@components/auth/ProtectedRoute';
 import { AdminRoute } from '@components/auth/AdminRoute';
 import { AppLayout } from '@components/layout/AppLayout';
 import { LoginPage } from '@pages/auth/LoginPage';
+import { RegisterPage } from '@pages/auth/RegisterPage';
 import { DashboardPage } from '@pages/dashboard/DashboardPage';
 import { FlightListPage } from '@pages/flights/FlightListPage';
 import { FlightDetailPage } from '@pages/flights/FlightDetailPage';
@@ -27,6 +28,7 @@ import { NotFoundPage } from '@pages/NotFoundPage';
 export default function App() {
   const element = useRoutes([
     { path: '/login', element: <LoginPage /> },
+    { path: '/register', element: <RegisterPage /> },
     {
       element: (
         <ProtectedRoute>

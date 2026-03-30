@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { authApi } from '@api/auth.api';
 import { userApi } from '@api/user.api';
-import { LoginRequest } from '@/types/auth.types';
+import { LoginRequest, RegisterRequest } from '@/types/auth.types';
 import { AppError } from '@/types/common.types';
 import { useAuthStore } from '@stores/auth.store';
 import { normalizeProblemError } from '@utils/helpers';
@@ -59,6 +59,35 @@ export const useLogout = () => {
     onError: () => {
       clearAuth();
       navigate('/login', { replace: true });
+    }
+  });
+};
+
+export const useRegister = () => {
+  const navigate = useNavigate();
+
+  return useMutation({
+    mutationFn: async (payload: RegisterRequest) => {
+      const response = await authApi.register(payload);
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      message.success('Đăng ký thành công');
+      navigate('/login', {
+        replace: true,
+        state: {
+          registrationSuccess: true,
+          registeredEmail: variables.email
+        }
+      });
+    },
+    onError: (error) => {
+      const appError = normalizeProblemError(error) as AppError;
+      if (appError.status === 409) {
+        message.error('Email đã tồn tại');
+        return;
+      }
+      message.error(appError.message || 'Đăng ký thất bại');
     }
   });
 };

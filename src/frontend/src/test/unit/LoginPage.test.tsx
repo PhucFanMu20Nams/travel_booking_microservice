@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { LoginPage } from '@pages/auth/LoginPage';
 import { createTestWrapper } from '@/test/utils';
 
@@ -36,5 +37,26 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(mutate).toHaveBeenCalledWith({ email: 'dev@dev.com', password: 'Admin@12345' });
     });
+  });
+
+  it('should show registration success alert, prefill email and render register CTA', async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/login',
+            state: { registrationSuccess: true, registeredEmail: 'fresh@example.com' }
+          }
+        ]}
+      >
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Đăng ký thành công')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('fresh@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Đăng ký' })).toBeInTheDocument();
   });
 });

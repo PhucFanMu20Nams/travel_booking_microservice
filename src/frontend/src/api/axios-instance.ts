@@ -15,7 +15,7 @@ const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-const authlessClient = axios.create({
+export const authlessClient = axios.create({
   timeout: API_TIMEOUT,
   headers: { 'Content-Type': 'application/json' }
 });

@@ -25,6 +25,13 @@ const userBaseSchema = z.object({
   passengerType: z.nativeEnum(PassengerType)
 });
 
+export const registerFormSchema = userBaseSchema.omit({ role: true }).extend({
+  password: z
+    .string()
+    .min(8, 'Mật khẩu tối thiểu 8 ký tự')
+    .regex(passwordRegex, 'Mật khẩu phải chứa ít nhất 1 chữ và 1 số')
+});
+
 export const createUserFormSchema = userBaseSchema.extend({
   password: z
     .string()

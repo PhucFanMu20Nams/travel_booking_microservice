@@ -2,6 +2,8 @@ import { LockOutlined, MailOutlined, SafetyCertificateOutlined } from '@ant-desi
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert, Button, Card, Form, Input, Space, Typography } from 'antd';
 import { Controller, useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useLogin } from '@hooks/useAuth';
 import { loginSchema } from '@utils/validation';
@@ -9,6 +11,10 @@ import { loginSchema } from '@utils/validation';
 const { Title, Text } = Typography;
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+type RegistrationState = {
+  registrationSuccess?: boolean;
+  registeredEmail?: string;
+};
 
 const trustPoints = [
   '10+ sân bay nội địa Việt Nam với routes thực',
@@ -17,18 +23,40 @@ const trustPoints = [
 ];
 
 export const LoginPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const loginMutation = useLogin();
+  const [registrationState, setRegistrationState] = useState<RegistrationState | null>(null);
   const {
     control,
     handleSubmit,
-    formState: { errors }
+    formState: { errors },
+    reset
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'dev@dev.com',
-      password: 'Admin@12345'
+      email: '',
+      password: ''
     }
   });
+
+  useEffect(() => {
+    const state = (location.state as RegistrationState | null) ?? null;
+
+    if (!state?.registrationSuccess) {
+      return;
+    }
+
+    setRegistrationState({
+      registrationSuccess: true,
+      registeredEmail: typeof state.registeredEmail === 'string' ? state.registeredEmail : ''
+    });
+    reset({
+      email: typeof state.registeredEmail === 'string' ? state.registeredEmail : '',
+      password: ''
+    });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, reset]);
 
   const onSubmit = (values: LoginFormValues) => {
     loginMutation.mutate(values);
@@ -146,6 +174,18 @@ export const LoginPage = () => {
           </Space>
 
           <Form layout="vertical" onFinish={handleSubmit(onSubmit)} style={{ marginTop: 24 }}>
+            {registrationState?.registrationSuccess && (
+              <Alert
+                type="success"
+                showIcon
+                closable
+                onClose={() => setRegistrationState(null)}
+                message="Đăng ký thành công"
+                description="Bạn có thể đăng nhập ngay bằng tài khoản vừa tạo."
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
             <Form.Item
               label="Email"
               validateStatus={errors.email ? 'error' : undefined}
@@ -184,6 +224,16 @@ export const LoginPage = () => {
             >
               Đăng nhập
             </Button>
+
+            <Space
+              align="center"
+              style={{ width: '100%', justifyContent: 'space-between', marginTop: 12 }}
+            >
+              <Text type="secondary">Chưa có tài khoản?</Text>
+              <Button type="link" onClick={() => navigate('/register')} style={{ paddingInline: 0 }}>
+                Đăng ký
+              </Button>
+            </Space>
 
             <Card
               style={{
