@@ -31,6 +31,9 @@ export class Passenger {
     @Column({ nullable: true }) // Making 'updatedAt' nullable
     updatedAt?: Date | null; // You can use 'Date | null' to allow null values
 
+    @Column({ nullable: true })
+    sourceUpdatedAt?: Date | null;
+
     constructor(partial?: Partial<Passenger>) {
         Object.assign(this, partial);
         this.createdAt = partial?.createdAt ?? new Date();

@@ -3,6 +3,7 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IPassengerRepository, PassengerRepository } from '@/data/repositories/passenger.repository';
 import { Passenger } from '@/passenger/entities/passenger.entity';
+import { ProcessedMessage } from '@/passenger/entities/processed-message.entity';
 import { RabbitmqModule } from 'building-blocks/rabbitmq/rabbitmq.module';
 import {
   GetPassengerByIdController,
@@ -20,9 +21,14 @@ import { UserCreated, UserUpdated } from 'building-blocks/contracts/identity.con
 import { CreateUserConsumerHandler } from '@/user/consumers/create-user';
 import { IRabbitmqConsumer } from 'building-blocks/rabbitmq/rabbitmq-subscriber';
 import { UpdateUserConsumerHandler } from '@/user/consumers/update-user';
+import { ProcessedMessageRepository } from '@/data/repositories/processed-message.repository';
 
 @Module({
-  imports: [CqrsModule, RabbitmqModule.forRoot(), TypeOrmModule.forFeature([Passenger])],
+  imports: [
+    CqrsModule,
+    RabbitmqModule.forRoot(),
+    TypeOrmModule.forFeature([Passenger, ProcessedMessage])
+  ],
   controllers: [GetPassengerByIdController, GetPassengerByUserIdController, GetPassengersController],
   providers: [
     GetPassengerByIdHandler,
@@ -33,6 +39,10 @@ import { UpdateUserConsumerHandler } from '@/user/consumers/update-user';
     {
       provide: 'IPassengerRepository',
       useClass: PassengerRepository
+    },
+    {
+      provide: 'IProcessedMessageRepository',
+      useClass: ProcessedMessageRepository
     }
   ],
   exports: []
@@ -45,11 +55,11 @@ export class PassengerModule implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.rabbitmqConsumer.consumeMessage(
+    void this.rabbitmqConsumer.consumeMessage(
       UserCreated,
       this.createUserConsumerHandler.handle.bind(this.createUserConsumerHandler)
     );
-    await this.rabbitmqConsumer.consumeMessage(
+    void this.rabbitmqConsumer.consumeMessage(
       UserUpdated,
       this.updateUserConsumerHandler.handle.bind(this.updateUserConsumerHandler)
     );

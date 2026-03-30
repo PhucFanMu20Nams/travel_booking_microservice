@@ -8,6 +8,7 @@ import configs from "building-blocks/configs/configs";
 import { OtelLogger } from 'building-blocks/openTelemetry/otel-logger';
 import { OpenTelemetryModule } from 'building-blocks/openTelemetry/opentelemetry.module';
 import { createGlobalValidationPipe } from 'building-blocks/validation/validation.pipe';
+import { registerHealthEndpoints } from 'building-blocks/health/register-health-endpoints';
 
 async function bootstrap() {
 
@@ -37,6 +38,7 @@ async function bootstrap() {
     SwaggerModule.setup('swagger', app, document);
 
     app.useGlobalPipes(createGlobalValidationPipe());
+    registerHealthEndpoints(app);
 
     app.use((req, res, next) => {
         if (req.originalUrl == '/' || req.originalUrl.includes('favicon.ico')) {
