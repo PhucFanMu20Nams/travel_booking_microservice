@@ -16,13 +16,16 @@ const envVarsSchema = joi_1.default.object()
     PORT: joi_1.default.number().default(3000),
     JWT_SECRET: joi_1.default.string().trim().min(16).required().description('JWT secret key'),
     JWT_ACCESS_EXPIRATION_MINUTES: joi_1.default.number()
-        .default(30)
+        .default(5)
         .description('minutes after which access tokens expire'),
     JWT_REFRESH_EXPIRATION_DAYS: joi_1.default.number()
         .integer()
         .min(1)
         .default(1)
         .description('days after which refresh tokens expire'),
+    JWT_REMOTE_INTROSPECTION_ENABLED: joi_1.default.boolean()
+        .default(true)
+        .description('Whether authenticated requests should validate token revocation against identity'),
     IDENTITY_SERVICE_BASE_URL: joi_1.default.string()
         .uri({ scheme: ['http', 'https'] })
         .default('http://localhost:3333')
@@ -58,6 +61,9 @@ const envVarsSchema = joi_1.default.object()
     RABBITMQ_USE_MESSAGE_ENVELOPE: joi_1.default.boolean()
         .default(false)
         .description('Publish events using the shared message envelope'),
+    RABBITMQ_PUBLISH_CONFIRM_TIMEOUT_MS: joi_1.default.number()
+        .default(5000)
+        .description('Maximum time to wait for RabbitMQ publisher confirms'),
     RETRY_COUNT: joi_1.default.number().default(3).description('Number of retries'),
     RETRY_FACTOR: joi_1.default.number().default(2).description('Exponential backoff factor'),
     RETRY_MIN_TIMEOUT: joi_1.default.number()
@@ -66,6 +72,15 @@ const envVarsSchema = joi_1.default.object()
     RETRY_MAX_TIMEOUT: joi_1.default.number()
         .default(60000)
         .description('Maximum time before retrying (60 seconds)'),
+    OUTBOX_POLL_INTERVAL_MS: joi_1.default.number()
+        .default(5000)
+        .description('Polling interval for service outbox dispatchers'),
+    OUTBOX_MAX_ATTEMPTS: joi_1.default.number()
+        .default(20)
+        .description('Maximum retry attempts before an outbox message is considered stalled'),
+    OUTBOX_RETRY_BASE_MS: joi_1.default.number()
+        .default(5000)
+        .description('Base retry delay for outbox failures'),
     OPEN_TELEMETRY_COLLECTOR_URL: joi_1.default.string()
         .default('http://localhost:4317')
         .description('Collector URL'),
@@ -91,7 +106,8 @@ exports.default = {
         username: envVars.RABBITMQ_USERNAME,
         password: envVars.RABBITMQ_PASSWORD,
         exchange: envVars.RABBITMQ_EXCHANGE,
-        useEnvelope: envVars.RABBITMQ_USE_MESSAGE_ENVELOPE
+        useEnvelope: envVars.RABBITMQ_USE_MESSAGE_ENVELOPE,
+        publishConfirmTimeoutMs: envVars.RABBITMQ_PUBLISH_CONFIRM_TIMEOUT_MS
     },
     postgres: {
         host: envVars.POSTGRES_HOST,
@@ -111,7 +127,8 @@ exports.default = {
     jwt: {
         secret: envVars.JWT_SECRET,
         accessExpirationMinutes: envVars.JWT_ACCESS_EXPIRATION_MINUTES,
-        refreshExpirationDays: envVars.JWT_REFRESH_EXPIRATION_DAYS
+        refreshExpirationDays: envVars.JWT_REFRESH_EXPIRATION_DAYS,
+        remoteIntrospectionEnabled: envVars.JWT_REMOTE_INTROSPECTION_ENABLED
     },
     identity: {
         serviceBaseUrl: envVars.IDENTITY_SERVICE_BASE_URL
@@ -121,6 +138,11 @@ exports.default = {
         factor: envVars.RETRY_FACTOR,
         minTimeout: envVars.RETRY_MIN_TIMEOUT,
         maxTimeout: envVars.RETRY_MAX_TIMEOUT
+    },
+    outbox: {
+        pollIntervalMs: envVars.OUTBOX_POLL_INTERVAL_MS,
+        maxAttempts: envVars.OUTBOX_MAX_ATTEMPTS,
+        retryBaseMs: envVars.OUTBOX_RETRY_BASE_MS
     },
     opentelemetry: {
         serviceName: envVars.OPEN_TELEMETRY_SERVICE_NAME,

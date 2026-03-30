@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReserveSeatRequestDto = exports.SeatDto = exports.FlightDto = exports.SeatReleaseRequested = exports.SeatReserved = exports.SeatCreated = exports.AirportCreated = exports.AircraftCreated = exports.FlightCreated = exports.PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE = exports.PREMIUM_SEAT_SELECTION_REQUIRED_CODE = exports.SeatReleaseReason = exports.SeatType = exports.SeatClass = exports.FlightStatus = void 0;
+exports.ReserveSeatRequestDto = exports.SeatStateDto = exports.SeatReservationDto = exports.SeatDto = exports.FlightDto = exports.SeatCommitRequested = exports.SeatReleaseRequested = exports.SeatReserved = exports.SeatCreated = exports.AirportCreated = exports.AircraftCreated = exports.FlightCreated = exports.PREMIUM_SEAT_SELECTION_REQUIRED_MESSAGE = exports.PREMIUM_SEAT_SELECTION_REQUIRED_CODE = exports.SeatReleaseReason = exports.SeatState = exports.SeatType = exports.SeatClass = exports.FlightStatus = void 0;
 const class_validator_1 = require("class-validator");
 const validation_constants_1 = require("../validation/validation.constants");
 const validation_decorators_1 = require("../validation/validation.decorators");
@@ -36,6 +36,12 @@ var SeatType;
     SeatType[SeatType["MIDDLE"] = 2] = "MIDDLE";
     SeatType[SeatType["AISLE"] = 3] = "AISLE";
 })(SeatType || (exports.SeatType = SeatType = {}));
+var SeatState;
+(function (SeatState) {
+    SeatState[SeatState["AVAILABLE"] = 0] = "AVAILABLE";
+    SeatState[SeatState["HELD"] = 1] = "HELD";
+    SeatState[SeatState["BOOKED"] = 2] = "BOOKED";
+})(SeatState || (exports.SeatState = SeatState = {}));
 var SeatReleaseReason;
 (function (SeatReleaseReason) {
     SeatReleaseReason[SeatReleaseReason["BOOKING_CANCELED"] = 0] = "BOOKING_CANCELED";
@@ -239,6 +245,7 @@ class SeatCreated {
     seatType;
     flightId;
     isReserved;
+    seatState;
     createdAt;
     updatedAt;
     constructor(request = {}) {
@@ -278,6 +285,12 @@ __decorate([
     __metadata("design:type", Boolean)
 ], SeatCreated.prototype, "isReserved", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.ToInteger)(),
+    (0, class_validator_1.IsEnum)(SeatState),
+    __metadata("design:type", Number)
+], SeatCreated.prototype, "seatState", void 0);
+__decorate([
     (0, validation_decorators_1.ToDate)(),
     (0, class_validator_1.IsDate)(),
     __metadata("design:type", Date)
@@ -297,6 +310,9 @@ class SeatReserved {
     price;
     currency;
     isReserved;
+    seatState;
+    holdToken;
+    holdExpiresAt;
     createdAt;
     updatedAt;
     constructor(request = {}) {
@@ -348,6 +364,25 @@ __decorate([
     __metadata("design:type", Boolean)
 ], SeatReserved.prototype, "isReserved", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.ToInteger)(),
+    (0, class_validator_1.IsEnum)(SeatState),
+    __metadata("design:type", Number)
+], SeatReserved.prototype, "seatState", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.TrimmedText)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], SeatReserved.prototype, "holdToken", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.ToDate)(),
+    (0, class_validator_1.IsDate)(),
+    __metadata("design:type", Date)
+], SeatReserved.prototype, "holdExpiresAt", void 0);
+__decorate([
     (0, validation_decorators_1.ToDate)(),
     (0, class_validator_1.IsDate)(),
     __metadata("design:type", Date)
@@ -360,6 +395,7 @@ __decorate([
 ], SeatReserved.prototype, "updatedAt", void 0);
 class SeatReleaseRequested {
     bookingId;
+    holdToken;
     seatNumber;
     flightId;
     reason;
@@ -375,6 +411,13 @@ __decorate([
     (0, class_validator_1.IsInt)(),
     __metadata("design:type", Number)
 ], SeatReleaseRequested.prototype, "bookingId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.TrimmedText)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], SeatReleaseRequested.prototype, "holdToken", void 0);
 __decorate([
     (0, validation_decorators_1.UppercaseText)(),
     (0, class_validator_1.IsString)(),
@@ -397,6 +440,45 @@ __decorate([
     (0, class_validator_1.IsDate)(),
     __metadata("design:type", Date)
 ], SeatReleaseRequested.prototype, "requestedAt", void 0);
+class SeatCommitRequested {
+    seatNumber;
+    flightId;
+    holdToken;
+    bookingId;
+    committedAt;
+    constructor(request = {}) {
+        Object.assign(this, request);
+    }
+}
+exports.SeatCommitRequested = SeatCommitRequested;
+__decorate([
+    (0, validation_decorators_1.UppercaseText)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.Matches)(validation_constants_1.SEAT_NUMBER_REGEX),
+    __metadata("design:type", String)
+], SeatCommitRequested.prototype, "seatNumber", void 0);
+__decorate([
+    (0, validation_decorators_1.ToInteger)(),
+    (0, class_validator_1.IsInt)(),
+    __metadata("design:type", Number)
+], SeatCommitRequested.prototype, "flightId", void 0);
+__decorate([
+    (0, validation_decorators_1.TrimmedText)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], SeatCommitRequested.prototype, "holdToken", void 0);
+__decorate([
+    (0, validation_decorators_1.ToInteger)(),
+    (0, class_validator_1.IsInt)(),
+    __metadata("design:type", Number)
+], SeatCommitRequested.prototype, "bookingId", void 0);
+__decorate([
+    (0, validation_decorators_1.ToDate)(),
+    (0, class_validator_1.IsDate)(),
+    __metadata("design:type", Date)
+], SeatCommitRequested.prototype, "committedAt", void 0);
 class FlightDto {
     id;
     flightNumber;
@@ -425,6 +507,7 @@ class SeatDto {
     price;
     currency;
     isReserved;
+    seatState;
     createdAt;
     updatedAt;
     constructor(request = {}) {
@@ -432,9 +515,33 @@ class SeatDto {
     }
 }
 exports.SeatDto = SeatDto;
+class SeatReservationDto extends SeatDto {
+    holdToken;
+    holdExpiresAt;
+    constructor(request = {}) {
+        super(request);
+        Object.assign(this, request);
+    }
+}
+exports.SeatReservationDto = SeatReservationDto;
+class SeatStateDto {
+    id;
+    seatNumber;
+    flightId;
+    seatState;
+    isReserved;
+    holdExpiresAt;
+    reservedBookingId;
+    updatedAt;
+    constructor(request = {}) {
+        Object.assign(this, request);
+    }
+}
+exports.SeatStateDto = SeatStateDto;
 class ReserveSeatRequestDto {
     seatNumber;
     flightId;
+    holdUntil;
     constructor(request = {}) {
         Object.assign(this, request);
     }
@@ -452,4 +559,10 @@ __decorate([
     (0, class_validator_1.IsInt)(),
     __metadata("design:type", Number)
 ], ReserveSeatRequestDto.prototype, "flightId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, validation_decorators_1.ToDate)(),
+    (0, class_validator_1.IsDate)(),
+    __metadata("design:type", Date)
+], ReserveSeatRequestDto.prototype, "holdUntil", void 0);
 //# sourceMappingURL=flight.contract.js.map

@@ -48,6 +48,12 @@ export enum SeatType {
   AISLE
 }
 
+export enum SeatState {
+  AVAILABLE = 0,
+  HELD = 1,
+  BOOKED = 2
+}
+
 export enum SeatReleaseReason {
   BOOKING_CANCELED = 0,
   BOOKING_CREATE_FAILED = 1,
@@ -222,6 +228,11 @@ export class SeatCreated implements IEvent {
   @IsBoolean()
   isReserved: boolean;
 
+  @IsOptional()
+  @ToInteger()
+  @IsEnum(SeatState)
+  seatState?: SeatState;
+
   @ToDate()
   @IsDate()
   createdAt: Date;
@@ -272,6 +283,22 @@ export class SeatReserved implements IEvent {
   @IsBoolean()
   isReserved: boolean;
 
+  @IsOptional()
+  @ToInteger()
+  @IsEnum(SeatState)
+  seatState?: SeatState;
+
+  @IsOptional()
+  @TrimmedText()
+  @IsString()
+  @IsNotEmpty()
+  holdToken?: string;
+
+  @IsOptional()
+  @ToDate()
+  @IsDate()
+  holdExpiresAt?: Date;
+
   @ToDate()
   @IsDate()
   createdAt: Date;
@@ -292,6 +319,12 @@ export class SeatReleaseRequested implements IEvent {
   @IsInt()
   bookingId?: number;
 
+  @IsOptional()
+  @TrimmedText()
+  @IsString()
+  @IsNotEmpty()
+  holdToken?: string;
+
   @UppercaseText()
   @IsString()
   @IsNotEmpty()
@@ -311,6 +344,35 @@ export class SeatReleaseRequested implements IEvent {
   requestedAt: Date;
 
   constructor(request: Partial<SeatReleaseRequested> = {}) {
+    Object.assign(this, request);
+  }
+}
+
+export class SeatCommitRequested implements IEvent {
+  @UppercaseText()
+  @IsString()
+  @IsNotEmpty()
+  @Matches(SEAT_NUMBER_REGEX)
+  seatNumber: string;
+
+  @ToInteger()
+  @IsInt()
+  flightId: number;
+
+  @TrimmedText()
+  @IsString()
+  @IsNotEmpty()
+  holdToken: string;
+
+  @ToInteger()
+  @IsInt()
+  bookingId: number;
+
+  @ToDate()
+  @IsDate()
+  committedAt: Date;
+
+  constructor(request: Partial<SeatCommitRequested> = {}) {
     Object.assign(this, request);
   }
 }
@@ -344,10 +406,36 @@ export class SeatDto {
   price: number;
   currency: string;
   isReserved: boolean;
+  seatState?: SeatState;
   createdAt: Date;
   updatedAt?: Date;
 
   constructor(request: Partial<SeatDto> = {}) {
+    Object.assign(this, request);
+  }
+}
+
+export class SeatReservationDto extends SeatDto {
+  holdToken?: string;
+  holdExpiresAt?: Date;
+
+  constructor(request: Partial<SeatReservationDto> = {}) {
+    super(request);
+    Object.assign(this, request);
+  }
+}
+
+export class SeatStateDto {
+  id: number;
+  seatNumber: string;
+  flightId: number;
+  seatState: SeatState;
+  isReserved: boolean;
+  holdExpiresAt?: Date | null;
+  reservedBookingId?: number | null;
+  updatedAt?: Date | null;
+
+  constructor(request: Partial<SeatStateDto> = {}) {
     Object.assign(this, request);
   }
 }
@@ -362,6 +450,11 @@ export class ReserveSeatRequestDto {
   @ToInteger()
   @IsInt()
   flightId: number;
+
+  @IsOptional()
+  @ToDate()
+  @IsDate()
+  holdUntil?: Date;
 
   constructor(request: Partial<ReserveSeatRequestDto> = {}) {
     Object.assign(this, request);

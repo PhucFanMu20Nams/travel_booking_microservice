@@ -23,7 +23,9 @@ export class JwtGuard extends AuthGuard('jwt') {
       throw new UnauthorizedException('Missing bearer token');
     }
 
-    await this.validateAccessToken(token);
+    if (configs.jwt.remoteIntrospectionEnabled) {
+      await this.validateAccessToken(token);
+    }
     if (Number.isInteger(userId) && userId > 0) {
       RequestContext.patch({ currentUserId: userId });
     }

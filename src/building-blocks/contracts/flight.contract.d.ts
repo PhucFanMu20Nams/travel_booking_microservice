@@ -19,6 +19,11 @@ export declare enum SeatType {
     MIDDLE = 2,
     AISLE = 3
 }
+export declare enum SeatState {
+    AVAILABLE = 0,
+    HELD = 1,
+    BOOKED = 2
+}
 export declare enum SeatReleaseReason {
     BOOKING_CANCELED = 0,
     BOOKING_CREATE_FAILED = 1,
@@ -68,6 +73,7 @@ export declare class SeatCreated implements IEvent {
     seatType: SeatType;
     flightId: number;
     isReserved: boolean;
+    seatState?: SeatState;
     createdAt: Date;
     updatedAt?: Date;
     constructor(request?: Partial<SeatCreated>);
@@ -81,17 +87,29 @@ export declare class SeatReserved implements IEvent {
     price: number;
     currency: string;
     isReserved: boolean;
+    seatState?: SeatState;
+    holdToken?: string;
+    holdExpiresAt?: Date;
     createdAt: Date;
     updatedAt?: Date;
     constructor(request?: Partial<SeatReserved>);
 }
 export declare class SeatReleaseRequested implements IEvent {
     bookingId?: number;
+    holdToken?: string;
     seatNumber: string;
     flightId: number;
     reason: SeatReleaseReason;
     requestedAt: Date;
     constructor(request?: Partial<SeatReleaseRequested>);
+}
+export declare class SeatCommitRequested implements IEvent {
+    seatNumber: string;
+    flightId: number;
+    holdToken: string;
+    bookingId: number;
+    committedAt: Date;
+    constructor(request?: Partial<SeatCommitRequested>);
 }
 export declare class FlightDto {
     id: number;
@@ -118,12 +136,30 @@ export declare class SeatDto {
     price: number;
     currency: string;
     isReserved: boolean;
+    seatState?: SeatState;
     createdAt: Date;
     updatedAt?: Date;
     constructor(request?: Partial<SeatDto>);
 }
+export declare class SeatReservationDto extends SeatDto {
+    holdToken?: string;
+    holdExpiresAt?: Date;
+    constructor(request?: Partial<SeatReservationDto>);
+}
+export declare class SeatStateDto {
+    id: number;
+    seatNumber: string;
+    flightId: number;
+    seatState: SeatState;
+    isReserved: boolean;
+    holdExpiresAt?: Date | null;
+    reservedBookingId?: number | null;
+    updatedAt?: Date | null;
+    constructor(request?: Partial<SeatStateDto>);
+}
 export declare class ReserveSeatRequestDto {
     seatNumber?: string;
     flightId: number;
+    holdUntil?: Date;
     constructor(request?: Partial<ReserveSeatRequestDto>);
 }

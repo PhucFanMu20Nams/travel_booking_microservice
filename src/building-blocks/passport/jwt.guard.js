@@ -23,7 +23,9 @@ let JwtGuard = class JwtGuard extends (0, passport_1.AuthGuard)('jwt') {
         if (!token) {
             throw new common_1.UnauthorizedException('Missing bearer token');
         }
-        await this.validateAccessToken(token);
+        if (configs_1.default.jwt.remoteIntrospectionEnabled) {
+            await this.validateAccessToken(token);
+        }
         if (Number.isInteger(userId) && userId > 0) {
             context_1.RequestContext.patch({ currentUserId: userId });
         }

@@ -9,6 +9,7 @@ declare const _default: {
         password: any;
         exchange: any;
         useEnvelope: any;
+        publishConfirmTimeoutMs: any;
     };
     postgres: {
         host: any;
@@ -29,6 +30,7 @@ declare const _default: {
         secret: any;
         accessExpirationMinutes: any;
         refreshExpirationDays: any;
+        remoteIntrospectionEnabled: any;
     };
     identity: {
         serviceBaseUrl: any;
@@ -38,6 +40,11 @@ declare const _default: {
         factor: any;
         minTimeout: any;
         maxTimeout: any;
+    };
+    outbox: {
+        pollIntervalMs: any;
+        maxAttempts: any;
+        retryBaseMs: any;
     };
     opentelemetry: {
         serviceName: any;
