@@ -5,6 +5,8 @@ import { IQueryHandler, QueryBus, QueryHandler } from '@nestjs/cqrs';
 import { SeatStateDto } from '@/seat/dtos/seat-state.dto';
 import { SeatStateQueryDto } from '@/seat/dtos/seat-state-query.dto';
 import { Seat } from '@/seat/entities/seat.entity';
+import { InternalOnly } from 'building-blocks/internal-auth/internal-only.decorator';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetSeatState {
   flightId: number;
@@ -24,6 +26,8 @@ export class GetSeatStateController {
 
   @Get('get-state')
   @ApiExcludeEndpoint()
+  @InternalOnly()
+  @RateLimitPolicy('flight.seat_get_state.internal')
   public async getSeatState(@Query() query: SeatStateQueryDto): Promise<SeatStateDto> {
     return await this.queryBus.execute(
       new GetSeatState({

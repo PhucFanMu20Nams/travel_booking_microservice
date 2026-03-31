@@ -22,6 +22,7 @@ import { Roles } from '@/common/auth/roles.decorator';
 import { RolesGuard } from '@/common/auth/roles.guard';
 import mapper from '@/aircraft/mappings';
 import { CreateAircraftRequestDto } from '@/aircraft/dtos/create-aircraft-request.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class CreateAircraft {
   model: string;
@@ -45,6 +46,7 @@ export class CreateAircraftController {
   @Post('create')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

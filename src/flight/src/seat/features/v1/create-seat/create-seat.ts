@@ -27,6 +27,7 @@ import { CreateSeatRequestDto } from '@/seat/dtos/create-seat-request.dto';
 import { SeatClass } from '@/seat/enums/seat-class.enum';
 import { SeatState } from '@/seat/enums/seat-state.enum';
 import { SeatType } from '@/seat/enums/seat-type.enum';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class CreateSeat {
   seatNumber: string;
@@ -51,6 +52,7 @@ export class CreateSeatController {
   @Post('create')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

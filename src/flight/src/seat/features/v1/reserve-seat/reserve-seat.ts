@@ -29,6 +29,7 @@ import { SeatReservationDto } from '@/seat/dtos/seat-reservation.dto';
 import { isFlightBookable } from '@/flight/utils/flight-status';
 import { calculateSeatPrice } from '@/seat/utils/seat-pricing';
 import { SeatState } from '@/seat/enums/seat-state.enum';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class ReserveSeat {
   seatNumber?: string;
@@ -51,6 +52,7 @@ export class ReserveSeatController {
 
   @Post('reserve')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('flight.seat_reserve')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

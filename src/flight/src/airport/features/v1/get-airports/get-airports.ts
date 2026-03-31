@@ -6,6 +6,7 @@ import { AirportDto } from '@/airport/dtos/airport.dto';
 import { Airport } from '@/airport/entities/airport.entity';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import mapper from '@/airport/mappings';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetAirports {
   constructor(request: Partial<GetAirports> = {}) {
@@ -24,6 +25,7 @@ export class GetAirportsController {
 
   @Get('get-all')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

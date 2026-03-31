@@ -22,6 +22,7 @@ import { Roles } from '@/common/auth/roles.decorator';
 import { RolesGuard } from '@/common/auth/roles.guard';
 import mapper from '@/airport/mappings';
 import { CreateAirportRequestDto } from '@/airport/dtos/create-airport-request.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class CreateAirport {
   code: string;
@@ -45,6 +46,7 @@ export class CreateAirportController {
   @Post('create')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

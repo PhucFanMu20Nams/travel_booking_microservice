@@ -7,6 +7,7 @@ import { IAircraftRepository } from '@/data/repositories/aircraftRepository';
 import { Aircraft } from '@/aircraft/entities/aircraft.entity';
 import mapper from '@/aircraft/mappings';
 import { AircraftIdQueryDto } from '@/aircraft/dtos/aircraft-id-query.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetAircraftById {
   id: number;
@@ -27,6 +28,7 @@ export class GetAircraftByIdController {
 
   @Get('get-by-id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

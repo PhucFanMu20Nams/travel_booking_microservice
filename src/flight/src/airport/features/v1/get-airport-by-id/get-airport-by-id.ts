@@ -7,6 +7,7 @@ import { Airport } from '@/airport/entities/airport.entity';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import mapper from '@/airport/mappings';
 import { AirportIdQueryDto } from '@/airport/dtos/airport-id-query.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetAirportById {
   id: number;
@@ -27,6 +28,7 @@ export class GetAirportByIdController {
 
   @Get('get-by-id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

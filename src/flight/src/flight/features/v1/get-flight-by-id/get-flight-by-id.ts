@@ -8,6 +8,7 @@ import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import mapper from '@/flight/mappings';
 import { FlightIdQueryDto } from '@/flight/dtos/flight-id-query.dto';
 import { getEffectiveFlightStatus } from '@/flight/utils/flight-status';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetFlightById {
   id: number;
@@ -28,6 +29,7 @@ export class GetFlightByIdController {
 
   @Get('get-by-id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

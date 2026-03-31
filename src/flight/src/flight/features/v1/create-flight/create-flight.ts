@@ -32,6 +32,7 @@ import { getEffectiveFlightStatus } from '@/flight/utils/flight-status';
 import { deriveFlightDateFromDeparture } from '@/flight/utils/flight-date';
 import { generateSeatTemplatesForModel } from '@/seat/utils/seat-layout';
 import { DataSource, QueryFailedError } from 'typeorm';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const FLIGHT_NUMBER_DATE_UNIQUE_INDEX = 'IDX_flight_flightNumber_flightDate';
@@ -70,6 +71,7 @@ export class CreateFlightController {
   @Post('create')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

@@ -15,6 +15,7 @@ import { Controller, Inject, NotFoundException, Post, Query, UseGuards } from '@
 import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import { Role } from 'building-blocks/contracts/identity.contract';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class ReconcileMissingSeats {
   flightId?: number;
@@ -36,6 +37,7 @@ export class ReconcileMissingSeatsController {
   @Post('reconcile-missing')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 200, description: 'OK', type: ReconcileSeatInventoryResponseDto })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

@@ -8,6 +8,7 @@ import { Seat } from '@/seat/entities/seat.entity';
 import mapper from '@/seat/mappings';
 import { SeatFlightIdQueryDto } from '@/seat/dtos/seat-flight-id-query.dto';
 import { calculateSeatPrice } from '@/seat/utils/seat-pricing';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetSeatsByFlight {
   flightId: number;
@@ -28,6 +29,7 @@ export class GetSeatsByFlightController {
 
   @Get('get-by-flight-id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

@@ -34,6 +34,7 @@ import { SeatReleaseRequestedConsumerHandler } from '@/seat/consumers/seat-relea
 import { ProcessedMessageRepository } from '@/data/repositories/processedMessageRepository';
 import { SeatCommitRequestedConsumerHandler } from '@/seat/consumers/seat-commit-requested.consumer';
 import { SeatHoldSweeperService } from '@/seat/services/seat-hold-sweeper.service';
+import { InternalOnlyGuard } from 'building-blocks/internal-auth/internal-only.guard';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SeatHoldSweeperService } from '@/seat/services/seat-hold-sweeper.servic
     SeatCommitRequestedConsumerHandler,
     SeatHoldSweeperService,
     RolesGuard,
+    InternalOnlyGuard,
     {
       provide: 'ISeatRepository',
       useClass: SeatRepository

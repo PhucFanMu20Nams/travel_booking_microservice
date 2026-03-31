@@ -6,6 +6,7 @@ import { AircraftDto } from '@/aircraft/dtos/aircraft.dto';
 import { Aircraft } from '@/aircraft/entities/aircraft.entity';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import mapper from '@/aircraft/mappings';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetAircrafts {
   constructor(request: Partial<GetAircrafts> = {}) {
@@ -24,6 +25,7 @@ export class GetAircraftsController {
 
   @Get('get-all')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })
