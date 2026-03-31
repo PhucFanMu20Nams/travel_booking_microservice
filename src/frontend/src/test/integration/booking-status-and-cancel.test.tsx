@@ -8,8 +8,8 @@ import { BookingListPage } from '@pages/bookings/BookingListPage';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { server } from '@/test/msw/server';
 import { createTestQueryClient, renderWithRoute } from '@/test/utils';
-import { aircrafts, airports, makeBooking, makeFlight, setAuthenticatedUser } from '@/test/frontend.fixtures';
-import { BookingStatus, FlightStatus } from '@/types/enums';
+import { aircrafts, airports, makeBooking, makeFlight, makePayment, setAuthenticatedUser } from '@/test/frontend.fixtures';
+import { BookingStatus, FlightStatus, PaymentStatus } from '@/types/enums';
 
 describe('booking status and cancellation flows', () => {
   beforeEach(() => {
@@ -139,7 +139,16 @@ describe('booking status and cancellation flows', () => {
       http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
       http.get('/api/v1/aircraft/get-all', () => HttpResponse.json(aircrafts)),
       http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBooking)),
-      http.get('/api/v1/flight/get-by-id', () => HttpResponse.json(flight))
+      http.get('/api/v1/flight/get-by-id', () => HttpResponse.json(flight)),
+      http.get('/api/v1/payment/get-by-id', () =>
+        HttpResponse.json(
+          makePayment({
+            id: 901,
+            bookingId: 9,
+            paymentStatus: PaymentStatus.PENDING
+          })
+        )
+      )
     );
 
     render(
@@ -155,5 +164,39 @@ describe('booking status and cancellation flows', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Thanh toán ví' }));
     expect(await screen.findByTestId('location-probe')).toHaveTextContent('/bookings/create?bookingId=9');
+  });
+
+  it('hides wallet payment button when pending booking already has succeeded payment', async () => {
+    const pendingBookingWithSucceededPayment = makeBooking({
+      id: 10,
+      bookingStatus: BookingStatus.PENDING_PAYMENT,
+      paymentId: 902,
+      paymentSummary: null
+    });
+    const flight = makeFlight({
+      id: 1,
+      flightStatus: FlightStatus.SCHEDULED
+    });
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/aircraft/get-all', () => HttpResponse.json(aircrafts)),
+      http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBookingWithSucceededPayment)),
+      http.get('/api/v1/flight/get-by-id', () => HttpResponse.json(flight)),
+      http.get('/api/v1/payment/get-by-id', () =>
+        HttpResponse.json(
+          makePayment({
+            id: 902,
+            bookingId: 10,
+            paymentStatus: PaymentStatus.SUCCEEDED
+          })
+        )
+      )
+    );
+
+    renderWithRoute(<BookingDetailPage />, { route: '/bookings/10', path: '/bookings/:id' });
+
+    expect(await screen.findByText('Chi tiết Booking #10')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thanh toán ví' })).not.toBeInTheDocument();
   });
 });

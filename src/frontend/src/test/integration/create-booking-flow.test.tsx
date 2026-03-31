@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { message } from 'antd';
@@ -7,7 +7,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { CreateBookingPage } from '@pages/bookings/CreateBookingPage';
 import { server } from '@/test/msw/server';
 import { renderWithRoute } from '@/test/utils';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import {
   aircrafts,
   airports,
@@ -112,6 +112,36 @@ const renderCreateBookingWithRetryClient = (route = '/bookings/create') => {
   );
 };
 
+const renderCreateBookingWithLocationProbe = (route = '/bookings/create') => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false
+      },
+      mutations: {
+        retry: false
+      }
+    }
+  });
+
+  const LocationProbe = () => {
+    const location = useLocation();
+    return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
+  };
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[route]}>
+        <LocationProbe />
+        <Routes>
+          <Route path="/bookings/create" element={<CreateBookingPage />} />
+          <Route path="/bookings/:id" element={<div>Booking detail</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+};
+
 describe('create booking flow', () => {
   beforeEach(() => {
     setAuthenticatedUser();
@@ -183,90 +213,290 @@ describe('create booking flow', () => {
   });
 
   it(
-    'creates a pending checkout, then syncs booking once payment becomes succeeded',
+    'freezes payment actions after succeeded and still confirms booking when confirmation is delayed',
     async () => {
-    const user = userEvent.setup();
-    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN321' });
-    const checkout = makeBookingCheckout(
-      {},
-      {
+      const user = userEvent.setup();
+      const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN321' });
+      const checkout = makeBookingCheckout(
+        {},
+        {
+          id: 99,
+          flightId: 1,
+          flightNumber: 'VN321',
+          bookingStatus: BookingStatus.PENDING_PAYMENT,
+          paymentId: 91
+        },
+        {
+          id: 91,
+          bookingId: 99,
+          paymentStatus: PaymentStatus.PENDING
+        }
+      );
+      const confirmedPayment = makePayment({
+        id: 91,
+        bookingId: 99,
+        paymentStatus: PaymentStatus.SUCCEEDED
+      });
+      const pendingBooking = makeBooking({
         id: 99,
         flightId: 1,
         flightNumber: 'VN321',
-        bookingStatus: 0,
+        bookingStatus: BookingStatus.PENDING_PAYMENT,
         paymentId: 91
-      },
-      {
-        id: 91,
-        bookingId: 99,
-        paymentStatus: 0
-      }
-    );
-    const confirmedPayment = makePayment({
-      id: 91,
-      bookingId: 99
-    });
-    const confirmedBooking = makeBooking({
-      id: 99,
-      flightId: 1,
-      flightNumber: 'VN321'
-    });
-    const submittedPayloads: unknown[] = [];
-    let paymentAfterWalletPay = checkout.payment;
+      });
+      const confirmedBooking = makeBooking({
+        id: 99,
+        flightId: 1,
+        flightNumber: 'VN321',
+        bookingStatus: BookingStatus.CONFIRMED,
+        paymentId: 91
+      });
+      const submittedPayloads: unknown[] = [];
+      let paymentAfterWalletPay = checkout.payment;
+      let bookingSyncCalls = 0;
 
-    mockCreateBookingDependencies({
-      flights: [selectedFlight],
-      selectedFlight,
-      seats: [makeSeat({ id: 10, flightId: 1, seatNumber: '1A' })]
-    });
+      mockCreateBookingDependencies({
+        flights: [selectedFlight],
+        selectedFlight,
+        seats: [makeSeat({ id: 10, flightId: 1, seatNumber: '1A' })]
+      });
 
-    server.use(
-      http.post('/api/v1/booking/create', async ({ request }) => {
-        submittedPayloads.push(await request.json());
-        return HttpResponse.json(checkout);
-      }),
-      http.post('/api/v1/wallet/pay-booking', () => {
-        paymentAfterWalletPay = confirmedPayment;
-        return HttpResponse.json({
-          payment: confirmedPayment,
-          wallet: {
-            userId: 42,
-            balance: 7375000,
-            currency: 'VND',
-            createdAt: '2099-03-10T07:00:00.000Z',
-            updatedAt: '2099-03-10T07:01:00.000Z'
+      server.use(
+        http.post('/api/v1/booking/create', async ({ request }) => {
+          submittedPayloads.push(await request.json());
+          return HttpResponse.json(checkout);
+        }),
+        http.post('/api/v1/wallet/pay-booking', () => {
+          paymentAfterWalletPay = confirmedPayment;
+          return HttpResponse.json({
+            payment: confirmedPayment,
+            wallet: {
+              userId: 42,
+              balance: 7375000,
+              currency: 'VND',
+              createdAt: '2099-03-10T07:00:00.000Z',
+              updatedAt: '2099-03-10T07:01:00.000Z'
+            }
+          });
+        }),
+        http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(paymentAfterWalletPay)),
+        http.get('/api/v1/booking/get-by-id', () => {
+          bookingSyncCalls += 1;
+          return HttpResponse.json(bookingSyncCalls < 4 ? pendingBooking : confirmedBooking);
+        })
+      );
+
+      renderWithRoute(<CreateBookingPage />, {
+        route: '/bookings/create',
+        path: '/bookings/create'
+      });
+
+      await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+      await user.click(await screen.findByRole('button', { name: '1A' }));
+      await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+      await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+      await waitFor(() => {
+        expect(submittedPayloads).toEqual([
+          {
+            flightId: 1,
+            description: 'N/A',
+            seatNumber: '1A'
           }
-        });
-      }),
-      http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(paymentAfterWalletPay)),
-      http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(confirmedBooking))
-    );
+        ]);
+      });
 
-    renderWithRoute(<CreateBookingPage />, {
-      route: '/bookings/create',
-      path: '/bookings/create'
-    });
+      expect(await screen.findByText('Locked total')).toBeInTheDocument();
 
-    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
-    await user.click(await screen.findByRole('button', { name: '1A' }));
-    await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
-    await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+      await user.click(screen.getByRole('button', { name: 'Thanh toán bằng ví' }));
 
-    await waitFor(() => {
-      expect(submittedPayloads).toEqual([
+      expect(await screen.findByText('Đã thanh toán, đang xác nhận booking')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Quay lại review' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Refresh ví' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Nạp ví' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Thanh toán bằng ví' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Kiểm tra lại payment' })).not.toBeInTheDocument();
+
+      expect(await screen.findByText('Booking #99', undefined, { timeout: 10000 })).toBeInTheDocument();
+      expect(bookingSyncCalls).toBeGreaterThanOrEqual(4);
+    },
+    15000
+  );
+
+  it(
+    'shows timeout safe exit and keeps payment step read-only when booking confirmation exceeds 45 seconds',
+    async () => {
+      const user = userEvent.setup();
+      const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN322' });
+      const checkout = makeBookingCheckout(
+        {},
         {
+          id: 100,
           flightId: 1,
-          description: 'N/A',
-          seatNumber: '1A'
+          flightNumber: 'VN322',
+          bookingStatus: BookingStatus.PENDING_PAYMENT,
+          paymentId: 92
+        },
+        {
+          id: 92,
+          bookingId: 100,
+          paymentStatus: PaymentStatus.PENDING
         }
-      ]);
-    });
+      );
+      const confirmedPayment = makePayment({
+        id: 92,
+        bookingId: 100,
+        paymentStatus: PaymentStatus.SUCCEEDED
+      });
+      const pendingBooking = makeBooking({
+        id: 100,
+        flightId: 1,
+        flightNumber: 'VN322',
+        bookingStatus: BookingStatus.PENDING_PAYMENT,
+        paymentId: 92
+      });
+      let paymentAfterWalletPay = checkout.payment;
 
-    expect(await screen.findByText('Locked total')).toBeInTheDocument();
+      mockCreateBookingDependencies({
+        flights: [selectedFlight],
+        selectedFlight,
+        seats: [makeSeat({ id: 11, flightId: 1, seatNumber: '1A' })]
+      });
 
-    await user.click(screen.getByRole('button', { name: 'Thanh toán bằng ví' }));
+      server.use(
+        http.post('/api/v1/booking/create', () => HttpResponse.json(checkout)),
+        http.post('/api/v1/wallet/pay-booking', () => {
+          paymentAfterWalletPay = confirmedPayment;
+          return HttpResponse.json({
+            payment: confirmedPayment,
+            wallet: {
+              userId: 42,
+              balance: 7375000,
+              currency: 'VND',
+              createdAt: '2099-03-10T07:00:00.000Z',
+              updatedAt: '2099-03-10T07:01:00.000Z'
+            }
+          });
+        }),
+        http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(paymentAfterWalletPay)),
+        http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBooking))
+      );
 
-    expect(await screen.findByText('Booking #99')).toBeInTheDocument();
+      renderWithRoute(<CreateBookingPage />, {
+        route: '/bookings/create',
+        path: '/bookings/create'
+      });
+
+      await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+      await user.click(await screen.findByRole('button', { name: '1A' }));
+      await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+      await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+      vi.useFakeTimers();
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Thanh toán bằng ví' }));
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('Đã thanh toán, đang xác nhận booking')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(46000);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByText('Xác nhận booking đang chậm')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Về chi tiết booking' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Quay lại review' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Refresh ví' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Thanh toán bằng ví' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Booking not found')).not.toBeInTheDocument();
+    },
+    20000
+  );
+
+  it(
+    'pushes history state again when browser back is triggered during syncing',
+    async () => {
+      const user = userEvent.setup();
+      const pushStateSpy = vi.spyOn(window.history, 'pushState');
+      const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN323' });
+      const checkout = makeBookingCheckout(
+        {},
+        {
+          id: 101,
+          flightId: 1,
+          flightNumber: 'VN323',
+          bookingStatus: BookingStatus.PENDING_PAYMENT,
+          paymentId: 93
+        },
+        {
+          id: 93,
+          bookingId: 101,
+          paymentStatus: PaymentStatus.PENDING
+        }
+      );
+      const confirmedPayment = makePayment({
+        id: 93,
+        bookingId: 101,
+        paymentStatus: PaymentStatus.SUCCEEDED
+      });
+      const pendingBooking = makeBooking({
+        id: 101,
+        flightId: 1,
+        flightNumber: 'VN323',
+        bookingStatus: BookingStatus.PENDING_PAYMENT,
+        paymentId: 93
+      });
+      let paymentAfterWalletPay = checkout.payment;
+
+      mockCreateBookingDependencies({
+        flights: [selectedFlight],
+        selectedFlight,
+        seats: [makeSeat({ id: 12, flightId: 1, seatNumber: '1A' })]
+      });
+
+      server.use(
+        http.post('/api/v1/booking/create', () => HttpResponse.json(checkout)),
+        http.post('/api/v1/wallet/pay-booking', () => {
+          paymentAfterWalletPay = confirmedPayment;
+          return HttpResponse.json({
+            payment: confirmedPayment,
+            wallet: {
+              userId: 42,
+              balance: 7375000,
+              currency: 'VND',
+              createdAt: '2099-03-10T07:00:00.000Z',
+              updatedAt: '2099-03-10T07:01:00.000Z'
+            }
+          });
+        }),
+        http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(paymentAfterWalletPay)),
+        http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBooking))
+      );
+
+      renderWithRoute(<CreateBookingPage />, {
+        route: '/bookings/create',
+        path: '/bookings/create'
+      });
+
+      await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+      await user.click(await screen.findByRole('button', { name: '1A' }));
+      await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+      await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+      await user.click(await screen.findByRole('button', { name: 'Thanh toán bằng ví' }));
+      expect(await screen.findByText('Đang đồng bộ booking, vui lòng chờ')).toBeInTheDocument();
+
+      const callsBeforePop = pushStateSpy.mock.calls.length;
+      act(() => {
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      await waitFor(() => {
+        expect(pushStateSpy.mock.calls.length).toBeGreaterThan(callsBeforePop);
+      });
     },
     10000
   );
@@ -511,6 +741,127 @@ describe('create booking flow', () => {
     expect(screen.getByRole('button', { name: 'Tiếp tục review' })).toBeDisabled();
   });
 
+  it('redirects to existing confirmed booking when create returns ACTIVE_BOOKING_EXISTS', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN680' });
+    let createAttempts = 0;
+    let walletPayAttempts = 0;
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [makeSeat({ id: 12, flightId: 1, seatNumber: '1A' })]
+    });
+
+    server.use(
+      http.post('/api/v1/booking/create', () => {
+        createAttempts += 1;
+        return HttpResponse.json(
+          {
+            type: 'ConflictException',
+            title: 'An active booking already exists for this flight',
+            status: 409,
+            code: 'ACTIVE_BOOKING_EXISTS',
+            existingBookingId: 62,
+            existingBookingStatus: BookingStatus.CONFIRMED,
+            existingPaymentStatus: PaymentStatus.SUCCEEDED
+          },
+          { status: 409 }
+        );
+      }),
+      http.post('/api/v1/wallet/pay-booking', () => {
+        walletPayAttempts += 1;
+        return HttpResponse.json({});
+      })
+    );
+
+    renderCreateBookingWithLocationProbe('/bookings/create');
+
+    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+    await user.click(await screen.findByRole('button', { name: '1A' }));
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+    await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/bookings/62');
+    });
+
+    expect(createAttempts).toBe(1);
+    expect(walletPayAttempts).toBe(0);
+  });
+
+  it('resumes existing pending payment flow when create returns ACTIVE_BOOKING_EXISTS', async () => {
+    const user = userEvent.setup();
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN681' });
+    const pendingBooking = makeBooking({
+      id: 63,
+      flightId: 1,
+      flightNumber: 'VN681',
+      bookingStatus: BookingStatus.PENDING_PAYMENT,
+      paymentId: 603,
+      paymentSummary: null
+    });
+    const pendingPayment = makePayment({
+      id: 603,
+      bookingId: 63,
+      paymentStatus: PaymentStatus.PENDING,
+      completedAt: null
+    });
+    let createAttempts = 0;
+    let walletPayAttempts = 0;
+    let bookingByIdCalls = 0;
+
+    mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [makeSeat({ id: 13, flightId: 1, seatNumber: '1A' })]
+    });
+
+    server.use(
+      http.post('/api/v1/booking/create', () => {
+        createAttempts += 1;
+        return HttpResponse.json(
+          {
+            type: 'ConflictException',
+            title: 'An active booking already exists for this flight',
+            status: 409,
+            code: 'ACTIVE_BOOKING_EXISTS',
+            existingBookingId: 63,
+            existingBookingStatus: BookingStatus.PENDING_PAYMENT,
+            existingPaymentStatus: PaymentStatus.PENDING
+          },
+          { status: 409 }
+        );
+      }),
+      http.get('/api/v1/booking/get-by-id', () => {
+        bookingByIdCalls += 1;
+        return HttpResponse.json(pendingBooking);
+      }),
+      http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(pendingPayment)),
+      http.post('/api/v1/wallet/pay-booking', () => {
+        walletPayAttempts += 1;
+        return HttpResponse.json({});
+      })
+    );
+
+    renderCreateBookingWithLocationProbe('/bookings/create');
+
+    await user.click(await screen.findByRole('button', { name: 'Chọn chuyến' }));
+    await user.click(await screen.findByRole('button', { name: '1A' }));
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục review' }));
+    await user.click(await screen.findByRole('button', { name: 'Tiếp tục thanh toán ví' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/bookings/create?bookingId=63');
+    });
+
+    expect(await screen.findByText('Đang nạp tiền cho booking #63')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Thanh toán bằng ví' })).toBeInTheDocument();
+    expect(createAttempts).toBe(1);
+    expect(bookingByIdCalls).toBeGreaterThan(0);
+    expect(walletPayAttempts).toBe(0);
+  });
+
   it('hydrates payment step when opening with bookingId deep-link', async () => {
     const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN678' });
     const pendingBooking = makeBooking({
@@ -568,7 +919,7 @@ describe('create booking flow', () => {
     expect(paymentByIdCalls).toBeGreaterThan(0);
   });
 
-  it('shows warning and blocks payment deep-link when booking is not pending payment', async () => {
+  it('redirects payment deep-link to detail when booking is already confirmed', async () => {
     const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN679' });
     const confirmedBooking = makeBooking({
       id: 56,
@@ -586,12 +937,12 @@ describe('create booking flow', () => {
 
     server.use(http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(confirmedBooking)));
 
-    renderWithRoute(<CreateBookingPage />, {
-      route: '/bookings/create?bookingId=56',
-      path: '/bookings/create'
+    renderCreateBookingWithLocationProbe('/bookings/create?bookingId=56');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/bookings/56');
     });
 
-    expect(await screen.findByText('Booking #56 không ở trạng thái chờ thanh toán')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Thanh toán bằng ví' })).not.toBeInTheDocument();
   });
 

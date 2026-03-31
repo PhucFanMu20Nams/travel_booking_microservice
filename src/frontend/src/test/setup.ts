@@ -3,6 +3,8 @@ import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from './msw/server';
 
+let originalGetComputedStyle: typeof window.getComputedStyle | null = null;
+
 const storageState: Record<string, string> = {};
 const storage: Storage = {
   getItem: (key: string) => (key in storageState ? storageState[key] : null),
@@ -62,6 +64,29 @@ beforeAll(() => {
   });
 
   window.scrollTo = vi.fn();
+
+  const baseGetComputedStyle = window.getComputedStyle.bind(window) as typeof window.getComputedStyle;
+  originalGetComputedStyle = baseGetComputedStyle;
+
+  // Work around jsdom warning when rc-util queries ::-webkit-scrollbar styles.
+  const patchedGetComputedStyle: typeof window.getComputedStyle = (element, pseudoElt) => {
+    if (pseudoElt === '::-webkit-scrollbar') {
+      return baseGetComputedStyle(element);
+    }
+
+    return baseGetComputedStyle(element, pseudoElt);
+  };
+
+  Object.defineProperty(window, 'getComputedStyle', {
+    configurable: true,
+    writable: true,
+    value: patchedGetComputedStyle
+  });
+  Object.defineProperty(globalThis, 'getComputedStyle', {
+    configurable: true,
+    writable: true,
+    value: patchedGetComputedStyle
+  });
 });
 
 afterEach(async () => {
@@ -80,5 +105,18 @@ afterEach(async () => {
 });
 
 afterAll(() => {
+  if (originalGetComputedStyle) {
+    Object.defineProperty(window, 'getComputedStyle', {
+      configurable: true,
+      writable: true,
+      value: originalGetComputedStyle
+    });
+    Object.defineProperty(globalThis, 'getComputedStyle', {
+      configurable: true,
+      writable: true,
+      value: originalGetComputedStyle
+    });
+  }
+
   server.close();
 });
