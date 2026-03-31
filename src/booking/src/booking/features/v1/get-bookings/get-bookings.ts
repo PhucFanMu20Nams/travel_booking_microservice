@@ -10,6 +10,7 @@ import { Request } from 'express';
 import { Role } from 'building-blocks/contracts/identity.contract';
 import { IPaymentClient } from '@/booking/http-client/services/payment/payment.client';
 import { toBookingDto } from '@/booking/utils/booking-dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 type JwtRequest = Request & {
   user?: {
@@ -43,6 +44,7 @@ export class GetBookingsController {
 
   @Get('get-all')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

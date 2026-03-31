@@ -7,6 +7,11 @@ import {
 } from 'building-blocks/contracts/flight.contract';
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from 'building-blocks/context/context';
+import configs from 'building-blocks/configs/configs';
+import {
+  createInternalAuthHeaders,
+  resolveInternalServiceName
+} from 'building-blocks/internal-auth/internal-auth.headers';
 import * as https from 'https';
 import { AxiosInstance } from 'axios';
 
@@ -54,10 +59,23 @@ export class FlightClient implements IFlightClient {
   }
 
   async getSeatState(flightId: number, seatNumber: string): Promise<SeatStateDto> {
-    const result = await this.client.get<SeatStateDto>(`/api/v1/seat/get-state`, {
+    const endpointPath = '/api/v1/seat/get-state';
+    const internalHeaders = configs.internalAuth.secret
+      ? createInternalAuthHeaders({
+          secret: configs.internalAuth.secret,
+          serviceName: resolveInternalServiceName(configs.serviceName),
+          method: 'GET',
+          path: endpointPath
+        })
+      : {};
+
+    const result = await this.client.get<SeatStateDto>(endpointPath, {
       params: {
         flightId,
         seatNumber
+      },
+      headers: {
+        ...internalHeaders
       }
     });
 

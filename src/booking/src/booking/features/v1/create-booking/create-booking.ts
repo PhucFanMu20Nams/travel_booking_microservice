@@ -46,6 +46,7 @@ import { createRequestHash } from '@/booking/utils/request-hash';
 import { IPaymentClient } from '@/booking/http-client/services/payment/payment.client';
 import { toBookingDto } from '@/booking/utils/booking-dto';
 import { BookingSeatWorkflowService } from '@/booking/services/booking-seat-workflow.service';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 type JwtRequest = Request & {
   user?: {
@@ -76,6 +77,7 @@ export class CreateBookingController {
 
   @Post('create')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('booking.create')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

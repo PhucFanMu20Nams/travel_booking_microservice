@@ -25,6 +25,7 @@ import { FlightStatus, SeatReleaseReason } from 'building-blocks/contracts/fligh
 import { BookingStatus } from '@/booking/enums/booking-status.enum';
 import { PaymentStatus } from 'building-blocks/contracts/payment.contract';
 import { BookingSeatWorkflowService } from '@/booking/services/booking-seat-workflow.service';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 type JwtRequest = Request & {
   user?: {
@@ -54,6 +55,7 @@ export class CancelBookingController {
 
   @Patch('cancel/:id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('booking.cancel')
   @ApiResponse({ status: 204, description: 'NO_CONTENT' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 404, description: 'NOT_FOUND' })
