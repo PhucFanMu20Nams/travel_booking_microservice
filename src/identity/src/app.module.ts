@@ -1,5 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule, OnApplicationBootstrap } from '@nestjs/common';
-import { RouterModule } from '@nestjs/core';
+import { APP_INTERCEPTOR, RouterModule } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserModule } from '@/user/user.module';
 import { AuthModule } from '@/auth/auth.module';
@@ -12,6 +12,8 @@ import { RequestContextMiddleware } from 'building-blocks/context/context';
 import { postgresOptions } from '@/data/data-source';
 import { OpenTelemetryModule } from 'building-blocks/openTelemetry/opentelemetry.module';
 import { IdentityUserEventPublisherService } from '@/user/services/identity-user-event-publisher.service';
+import { RateLimitInterceptor } from 'building-blocks/rate-limit/rate-limit.interceptor';
+import { RateLimitService } from 'building-blocks/rate-limit/rate-limit.service';
 
 @Module({
   imports: [
@@ -34,7 +36,16 @@ import { IdentityUserEventPublisherService } from '@/user/services/identity-user
       }
     ])
   ],
-  providers: [JwtStrategy, DataSeeder, IdentityUserEventPublisherService]
+  providers: [
+    JwtStrategy,
+    DataSeeder,
+    IdentityUserEventPublisherService,
+    RateLimitService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RateLimitInterceptor
+    }
+  ]
 })
 export class AppModule implements OnApplicationBootstrap, NestModule {
   constructor(private readonly dataSeeder: DataSeeder) {}

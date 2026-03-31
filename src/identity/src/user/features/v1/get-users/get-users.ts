@@ -11,6 +11,7 @@ import { RolesGuard } from '@/common/auth/roles.guard';
 import { Role } from '@/user/enums/role.enum';
 import mapper from '@/user/mapping';
 import { GetUsersQueryDto } from '@/user/dtos/get-users-query.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class GetUsers {
   page = 1;
@@ -36,6 +37,7 @@ export class GetUsersController {
   @Get('get')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

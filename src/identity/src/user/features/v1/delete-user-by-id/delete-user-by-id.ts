@@ -12,6 +12,7 @@ import mapper from '@/user/mapping';
 import { UserIdQueryDto } from '@/user/dtos/user-id-query.dto';
 import { IdentityUserEventPublisherService } from '@/user/services/identity-user-event-publisher.service';
 import { DataSource } from 'typeorm';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class DeleteUserById {
   id: number;
@@ -33,6 +34,7 @@ export class DeleteUserByIdController {
   @Delete('delete')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

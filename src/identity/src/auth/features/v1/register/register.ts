@@ -7,6 +7,7 @@ import { UserDto } from '@/user/dtos/user.dto';
 import { PassengerType } from '@/user/enums/passenger-type.enum';
 import { Role } from '@/user/enums/role.enum';
 import { IdentityUserWriteService } from '@/user/services/identity-user-write.service';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class Register {
   email: string;
@@ -30,6 +31,7 @@ export class RegisterController {
   constructor(private readonly commandBus: CommandBus) {}
 
   @Post('register')
+  @RateLimitPolicy('identity.register')
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 409, description: 'CONFLICT' })
   @ApiResponse({ status: 201, description: 'CREATED' })

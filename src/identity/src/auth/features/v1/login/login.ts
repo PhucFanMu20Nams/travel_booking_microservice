@@ -8,6 +8,7 @@ import { IAuthRepository } from '@/data/repositories/auth.repository';
 import { IUserRepository } from '@/data/repositories/user.repository';
 import { isPasswordMatch } from 'building-blocks/utils/encryption';
 import ApplicationException from 'building-blocks/types/exeptions/application.exception';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class Login {
   email: string;
@@ -28,6 +29,7 @@ export class LoginController {
   constructor(private readonly commandBus: CommandBus) {}
 
   @Post('login')
+  @RateLimitPolicy('identity.login')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

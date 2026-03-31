@@ -25,6 +25,7 @@ import { UserIdParamDto } from '@/user/dtos/user-id-param.dto';
 import { PassengerType } from '@/user/enums/passenger-type.enum';
 import { IdentityUserEventPublisherService } from '@/user/services/identity-user-event-publisher.service';
 import { DataSource } from 'typeorm';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class UpdateUser {
   id: number;
@@ -53,6 +54,7 @@ export class UpdateUserController {
   @Put('update/:id')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 204, description: 'NO_CONTENT' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })

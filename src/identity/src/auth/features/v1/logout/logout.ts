@@ -16,6 +16,7 @@ import { IUserRepository } from '@/data/repositories/user.repository';
 import { TokenType } from '@/auth/enums/token-type.enum';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import { LogoutRequestDto } from '@/auth/dtos/logout-request.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class Logout {
   accessToken: string;
@@ -36,6 +37,7 @@ export class LogoutController {
 
   @Post('logout')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

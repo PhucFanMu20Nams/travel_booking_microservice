@@ -11,6 +11,7 @@ import { ToInteger } from 'building-blocks/validation/validation.decorators';
 import { validateModel } from 'building-blocks/validation/validation.utils';
 import { Response } from 'express';
 import { ValidateAccessTokenRequestDto } from '@/auth/dtos/validate-access-token-request.dto';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class ValidateToken {
   @IsString()
@@ -35,6 +36,7 @@ export class ValidateAccessTokenController {
   constructor(private readonly commandBus: CommandBus) {}
 
   @Post('validate-access-token')
+  @RateLimitPolicy('identity.validate.dynamic')
   @ApiResponse({ status: 204, description: 'NO_CONTENT' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   public async validateAccessToken(

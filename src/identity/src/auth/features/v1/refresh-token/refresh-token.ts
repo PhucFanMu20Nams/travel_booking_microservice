@@ -8,6 +8,7 @@ import { IAuthRepository } from '@/data/repositories/auth.repository';
 import { IUserRepository } from '@/data/repositories/user.repository';
 import { TokenType } from '@/auth/enums/token-type.enum';
 import { ValidateToken } from '@/auth/features/v1/validate-token/validate-token';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class RefreshToken {
   refreshToken: string;
@@ -27,6 +28,7 @@ export class RefreshTokenController {
   constructor(private readonly commandBus: CommandBus) {}
 
   @Post('refresh-token')
+  @RateLimitPolicy('identity.refresh')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })

@@ -12,6 +12,7 @@ import {
 import { QueryBus } from '@nestjs/cqrs';
 import { JwtGuard } from 'building-blocks/passport/jwt.guard';
 import { Request } from 'express';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 type JwtRequest = Request & {
   user?: {
@@ -30,6 +31,7 @@ export class GetMeController {
 
   @Get('me')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 404, description: 'NOT_FOUND' })

@@ -10,6 +10,7 @@ import { RolesGuard } from '@/common/auth/roles.guard';
 import { CreateUserRequestDto } from '@/user/dtos/create-user-request.dto';
 import { PassengerType } from '@/user/enums/passenger-type.enum';
 import { IdentityUserWriteService } from '@/user/services/identity-user-write.service';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 export class CreateUser {
   email: string;
@@ -37,6 +38,7 @@ export class CreateUserController {
   @Post('create')
   @Roles(Role.ADMIN)
   @UseGuards(JwtGuard, RolesGuard)
+  @RateLimitPolicy('admin.write.default')
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })
