@@ -34,7 +34,8 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'warn' });
+  const onUnhandledRequest = process.env.CI === 'true' ? 'error' : 'warn';
+  server.listen({ onUnhandledRequest });
 
   class ResizeObserverMock {
     observe = vi.fn();

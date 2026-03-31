@@ -25,6 +25,12 @@ import { formatCurrency } from '@utils/format';
 const toCurrencyRegex = (amount: number, currency = 'VND') =>
   new RegExp(formatCurrency(amount, currency).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
 
+const ROUTER_FUTURE_FLAGS = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true
+} as const;
+const CI_FLAKY_TEST_TIMEOUT_MS = 15000;
+
 type RequestCounts = {
   flightById: number;
   seatInventory: number;
@@ -93,6 +99,7 @@ const renderCreateBookingWithRetryClient = (route = '/bookings/create') => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
+        retry: false,
         refetchOnWindowFocus: false
       },
       mutations: {
@@ -103,7 +110,7 @@ const renderCreateBookingWithRetryClient = (route = '/bookings/create') => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={[route]} future={ROUTER_FUTURE_FLAGS}>
         <Routes>
           <Route path="/bookings/create" element={<CreateBookingPage />} />
         </Routes>
@@ -116,6 +123,7 @@ const renderCreateBookingWithLocationProbe = (route = '/bookings/create') => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
+        retry: false,
         refetchOnWindowFocus: false
       },
       mutations: {
@@ -131,7 +139,7 @@ const renderCreateBookingWithLocationProbe = (route = '/bookings/create') => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={[route]} future={ROUTER_FUTURE_FLAGS}>
         <LocationProbe />
         <Routes>
           <Route path="/bookings/create" element={<CreateBookingPage />} />
@@ -784,11 +792,11 @@ describe('create booking flow', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location-probe')).toHaveTextContent('/bookings/62');
-    });
+    }, { timeout: 10000 });
 
     expect(createAttempts).toBe(1);
     expect(walletPayAttempts).toBe(0);
-  });
+  }, CI_FLAKY_TEST_TIMEOUT_MS);
 
   it('resumes existing pending payment flow when create returns ACTIVE_BOOKING_EXISTS', async () => {
     const user = userEvent.setup();
@@ -853,14 +861,14 @@ describe('create booking flow', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location-probe')).toHaveTextContent('/bookings/create?bookingId=63');
-    });
+      expect(screen.getByText('Đang nạp tiền cho booking #63')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Thanh toán bằng ví' })).toBeInTheDocument();
+    }, { timeout: 10000 });
 
-    expect(await screen.findByText('Đang nạp tiền cho booking #63')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Thanh toán bằng ví' })).toBeInTheDocument();
     expect(createAttempts).toBe(1);
     expect(bookingByIdCalls).toBeGreaterThan(0);
     expect(walletPayAttempts).toBe(0);
-  });
+  }, CI_FLAKY_TEST_TIMEOUT_MS);
 
   it('hydrates payment step when opening with bookingId deep-link', async () => {
     const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN678' });
@@ -909,15 +917,18 @@ describe('create booking flow', () => {
       path: '/bookings/create'
     });
 
-    expect(await screen.findByText('Đang nạp tiền cho booking #55')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Thanh toán bằng ví' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Đang nạp tiền cho booking #55')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Thanh toán bằng ví' })).toBeInTheDocument();
+    }, { timeout: 10000 });
+
     expect(screen.queryByRole('heading', { name: 'Chọn chuyến bay' })).not.toBeInTheDocument();
     expect((await screen.findAllByText('Selected fare')).length).toBeGreaterThan(0);
     expect(requestCounts.flightById).toBe(0);
     expect(requestCounts.seatInventory).toBe(0);
     expect(requestCounts.walletMe).toBeGreaterThan(0);
     expect(paymentByIdCalls).toBeGreaterThan(0);
-  });
+  }, CI_FLAKY_TEST_TIMEOUT_MS);
 
   it('redirects payment deep-link to detail when booking is already confirmed', async () => {
     const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN679' });

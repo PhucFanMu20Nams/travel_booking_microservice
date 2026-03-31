@@ -8,14 +8,21 @@ type WrapperOptions = {
   initialEntries?: string[];
 };
 
+const ROUTER_FUTURE_FLAGS = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true
+} as const;
+
 export const createTestWrapper = (options: WrapperOptions = {}) => {
   const queryClient = createTestQueryClient();
 
   const Wrapper = ({ children }: PropsWithChildren) => {
     const router = options.useMemoryRouter ? (
-      <MemoryRouter initialEntries={options.initialEntries || ['/']}>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={options.initialEntries || ['/']} future={ROUTER_FUTURE_FLAGS}>
+        {children}
+      </MemoryRouter>
     ) : (
-      <BrowserRouter>{children}</BrowserRouter>
+      <BrowserRouter future={ROUTER_FUTURE_FLAGS}>{children}</BrowserRouter>
     );
 
     return <QueryClientProvider client={queryClient}>{router}</QueryClientProvider>;
@@ -43,7 +50,7 @@ export const renderWithRoute = (ui: ReactElement, options: RenderRouteOptions) =
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[options.route]}>
+      <MemoryRouter initialEntries={[options.route]} future={ROUTER_FUTURE_FLAGS}>
         <Routes>
           <Route path={options.path} element={ui} />
         </Routes>
