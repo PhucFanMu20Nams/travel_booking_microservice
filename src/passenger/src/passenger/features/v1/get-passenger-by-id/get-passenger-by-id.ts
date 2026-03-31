@@ -19,6 +19,7 @@ import mapper from '@/passenger/mappings';
 import { PassengerIdQueryDto } from '@/passenger/dtos/passenger-id-query.dto';
 import { Role } from 'building-blocks/contracts/identity.contract';
 import { Request } from 'express';
+import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
 
 type JwtRequest = Request & {
   user?: {
@@ -48,6 +49,7 @@ export class GetPassengerByIdController {
 
   @Get('get-by-id')
   @UseGuards(JwtGuard)
+  @RateLimitPolicy('read.authenticated.default')
   @ApiResponse({ status: 200, description: 'OK' })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({ status: 400, description: 'BAD_REQUEST' })
