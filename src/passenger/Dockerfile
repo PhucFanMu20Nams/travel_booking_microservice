@@ -93,10 +93,41 @@ RUN set -eux; \
       elif [ ! -e "$service_node_modules/$name" ]; then \
         cp -a "$entry" "$service_node_modules/"; \
       fi; \
-    done; \
+    done
+RUN npm prune --omit=dev --no-audit --no-fund
+RUN set -eux; \
+    service_node_modules=/app/src/passenger/node_modules; \
+    shared_node_modules=/app/shared-node_modules; \
+    for entry in "$shared_node_modules"/*; do \
+      [ -e "$entry" ] || continue; \
+      name="$(basename "$entry")"; \
+      case "$name" in \
+        .bin|.*) continue ;; \
+      esac; \
+      if [ -d "$entry" ] && [ "${name#@}" != "$name" ]; then \
+        mkdir -p "$service_node_modules/$name"; \
+        for scoped_pkg in "$entry"/*; do \
+          [ -e "$scoped_pkg" ] || continue; \
+          pkg_name="$(basename "$scoped_pkg")"; \
+          if [ ! -e "$service_node_modules/$name/$pkg_name" ]; then \
+            cp -a "$scoped_pkg" "$service_node_modules/$name/"; \
+          fi; \
+        done; \
+      elif [ ! -e "$service_node_modules/$name" ]; then \
+        cp -a "$entry" "$service_node_modules/"; \
+      fi; \
+    done
+RUN set -eux; \
+    service_node_modules=/app/src/passenger/node_modules; \
     rm -rf "$service_node_modules/building-blocks"; \
     mkdir -p "$service_node_modules/building-blocks"
 COPY --from=builder /app/runtime/building-blocks/ /app/src/passenger/node_modules/building-blocks/
+RUN set -eux; \
+    bb_dir=/app/src/passenger/node_modules/building-blocks; \
+    [ -d "$bb_dir" ]; \
+    [ ! -L "$bb_dir" ]; \
+    [ -f "$bb_dir/configs/configs.js" ]; \
+    [ -f "$bb_dir/passport/jwt.guard.js" ]
 
 FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runner
 WORKDIR /app/src/passenger
