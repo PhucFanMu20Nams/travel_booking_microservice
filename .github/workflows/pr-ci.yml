@@ -323,5 +323,5 @@ jobs:
 
       - name: Validate docker compose files
         run: |
-          docker compose -f deployments/docker-compose/docker-compose.yaml config > /dev/null
-          docker compose -f deployments/docker-compose/docker-compose.yaml -f deployments/docker-compose/docker-compose.dev-rds.troubleshooting.yaml config > /dev/null
+          bash deployments/scripts/dev-up.sh config > /dev/null
+          bash deployments/scripts/dev-up.sh --rds config > /dev/null

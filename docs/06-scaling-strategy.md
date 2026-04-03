@@ -30,6 +30,28 @@ The system uses **Docker Compose** for both local development and deployment, wi
 └──┴─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Local Env Bootstrap
+
+Committed env files are limited to templates only:
+
+- `src/*/.env.example` for direct host runs
+- `src/*/.env.docker.example` for the default Docker Compose stack
+- `src/*/.env.rds.example` for the RDS troubleshooting overlay
+
+Materialize ignored local env files with the helper script:
+
+```bash
+bash deployments/scripts/dev-up.sh
+```
+
+To include the troubleshooting overlay for shared RDS-style dependencies:
+
+```bash
+bash deployments/scripts/dev-up.sh --rds
+```
+
+The script creates missing local env files from the committed templates without overwriting existing files, then runs Docker Compose. For direct host runs, copy `src/*/.env.example` to `src/*/.env.development` locally as needed.
+
 ## Identified Bottlenecks
 
 | # | Bottleneck | Impact | Location |
