@@ -104,7 +104,7 @@ export const FlightListPage = () => {
   const columns: ColumnsType<FlightDto> = useMemo(
     () => [
       {
-        title: 'Chuyến bay',
+        title: 'Flight',
         key: 'summary',
         render: (_, record) => {
           const route = buildRouteDescriptor(
@@ -162,7 +162,7 @@ export const FlightListPage = () => {
         sorter: true
       },
       {
-        title: 'Thao tác',
+        title: 'Actions',
         key: 'actions',
         width: 170,
         render: (_, record) => {
@@ -215,13 +215,13 @@ export const FlightListPage = () => {
     <>
       <PageHeader
         eyebrow="Flight ops"
-        title="Danh sách chuyến bay"
-        subtitle="Table-first on desktop, card-first on mobile. Mỗi record nhấn mạnh route, schedule, base fare và trạng thái thay vì chỉ hiện cột thô."
+        title="Flight list"
+        subtitle="Table-first on desktop, card-first on mobile. Each record emphasizes route, schedule, base fare, and status instead of showing only raw columns."
         meta={formatQuerySyncLabel(lastUpdatedAt)}
         extra={
           isAdmin() ? (
             <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/flights/create')}>
-              Tạo mới
+              Create new
             </Button>
           ) : null
         }
@@ -260,7 +260,7 @@ export const FlightListPage = () => {
         }
       >
         <SearchInput
-          placeholder="Tìm theo số hiệu"
+          placeholder="Search by flight number"
           value={params.searchTerm || ''}
           onSearch={(value) =>
             setParams((prev) => {
@@ -280,7 +280,7 @@ export const FlightListPage = () => {
           style={{ width: 220 }}
           value={statusFilter}
           options={[
-            { label: 'Tất cả trạng thái', value: 'all' },
+            { label: 'All statuses', value: 'all' },
             ...Object.values(FlightStatus)
               .filter((value) => typeof value === 'number')
               .map((status) => ({
@@ -295,7 +295,7 @@ export const FlightListPage = () => {
       {!tableData.length ? (
         <EmptyState
           title="No flights found"
-          description="Không có chuyến bay phù hợp với filter hiện tại."
+          description="No flights match the current filters."
           action={
             <Button
               onClick={() => {
@@ -318,7 +318,7 @@ export const FlightListPage = () => {
               actionSlot={
                 <Space wrap>
                   <Button icon={<EyeOutlined />} onClick={() => navigate(`/flights/${flight.id}`)}>
-                    Chi tiết
+                    Details
                   </Button>
                   <Button
                     type="primary"
@@ -326,7 +326,7 @@ export const FlightListPage = () => {
                     onClick={() => navigate(`/bookings/create?flightId=${flight.id}`)}
                     icon={<ShoppingCartOutlined />}
                   >
-                    Đặt vé
+                    Book now
                   </Button>
                 </Space>
               }

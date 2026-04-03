@@ -91,7 +91,7 @@ describe('flight booking availability surfaces', () => {
     await user.click(screen.getAllByText('Base fare')[0].closest('th') as HTMLElement);
     await waitFor(() => expect(requestedOrderBy).toContain('price'));
 
-    await user.click(screen.getAllByText('Chuyến bay')[0].closest('th') as HTMLElement);
+    await user.click(screen.getAllByText('Flight')[0].closest('th') as HTMLElement);
     await waitFor(() => expect(requestedOrderBy.at(-1)).toBe('flightDate'));
     expect(requestedOrderBy).not.toContain('summary');
   });
