@@ -14,22 +14,23 @@ import type { ItemType } from 'antd/es/menu/interface';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@stores/auth.store';
 import { useUiStore } from '@stores/ui.store';
+import { uiText } from '@/constants/uiText';
 
 const { Sider } = Layout;
 const { Text, Title } = Typography;
 
 const getMenuItems = (isAdmin: boolean): ItemType[] => {
   const base: ItemType[] = [
-    { key: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined /> },
-    { key: '/flights', label: 'Flights', icon: <RocketOutlined /> },
-    { key: '/wallet', label: 'My Wallet', icon: <CreditCardOutlined /> },
+    { key: '/dashboard', label: uiText.layout.sidebar.dashboard, icon: <DashboardOutlined /> },
+    { key: '/flights', label: uiText.layout.sidebar.flights, icon: <RocketOutlined /> },
+    { key: '/wallet', label: uiText.layout.sidebar.wallet, icon: <CreditCardOutlined /> },
     {
       key: 'bookings',
-      label: 'Bookings',
+      label: uiText.layout.sidebar.bookings,
       icon: <BookOutlined />,
       children: [
-        { key: '/bookings', label: 'List' },
-        { key: '/bookings/create', label: 'New booking' }
+        { key: '/bookings', label: uiText.layout.sidebar.bookingsList },
+        { key: '/bookings/create', label: uiText.layout.sidebar.newBooking }
       ]
     }
   ];
@@ -40,13 +41,17 @@ const getMenuItems = (isAdmin: boolean): ItemType[] => {
     {
       type: 'group',
       key: 'admin-group',
-      label: 'MANAGEMENT',
+      label: uiText.layout.sidebar.management,
       children: [
-        { key: '/users', label: 'Users', icon: <UserOutlined /> },
-        { key: '/passengers', label: 'Passengers', icon: <TeamOutlined /> },
-        { key: '/airports', label: 'Airports', icon: <EnvironmentOutlined /> },
-        { key: '/aircrafts', label: 'Aircraft', icon: <SendOutlined /> },
-        { key: '/payments/reconcile', label: 'Review wallet top-ups', icon: <CreditCardOutlined /> }
+        { key: '/users', label: uiText.layout.sidebar.users, icon: <UserOutlined /> },
+        { key: '/passengers', label: uiText.layout.sidebar.passengers, icon: <TeamOutlined /> },
+        { key: '/airports', label: uiText.layout.sidebar.airports, icon: <EnvironmentOutlined /> },
+        { key: '/aircrafts', label: uiText.layout.sidebar.aircraft, icon: <SendOutlined /> },
+        {
+          key: '/payments/reconcile',
+          label: uiText.layout.sidebar.reviewWalletTopUps,
+          icon: <CreditCardOutlined />
+        }
       ]
     } as ItemType
   );
@@ -102,7 +107,7 @@ const NavigationContent = ({ collapsed = false }: NavigationContentProps) => {
                 <Title level={4} style={{ margin: 0, color: '#ffffff' }}>
                   SkyBooking
                 </Title>
-                <Text style={{ color: 'rgba(255,255,255,0.72)' }}>Flight booking system</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.72)' }}>{uiText.layout.brandSubtitle}</Text>
               </Space>
             )}
           </Space>
@@ -125,7 +130,7 @@ const NavigationContent = ({ collapsed = false }: NavigationContentProps) => {
               }}
             >
               <GlobalOutlined />
-              Multi-service stack
+              {uiText.layout.multiServiceStack}
             </div>
           )}
         </div>

@@ -39,9 +39,9 @@ describe('Header', () => {
     renderHeader('/payments/reconcile');
 
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Thanh toán' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Payments' })).toBeInTheDocument();
 
-    const currentCrumb = screen.getByText('Duyệt nạp ví');
+    const currentCrumb = screen.getByText('Review wallet top-ups');
     expect(currentCrumb).toHaveClass('app-header__crumb--current');
     expect(document.querySelector('.app-header__breadcrumb')).toBeInTheDocument();
   });

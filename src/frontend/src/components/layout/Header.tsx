@@ -14,26 +14,12 @@ import { useAuthStore } from '@stores/auth.store';
 import { useUiStore } from '@stores/ui.store';
 import { roleLabels } from '@utils/format';
 import { formatQuerySyncLabel } from '@utils/presentation';
+import { uiText } from '@/constants/uiText';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
 
-const routeLabelMap: Record<string, string> = {
-  dashboard: 'Dashboard',
-  users: 'Người dùng',
-  create: 'Create',
-  edit: 'Edit',
-  airports: 'Sân bay',
-  aircrafts: 'Máy bay',
-  flights: 'Flights',
-  seats: 'Seats',
-  passengers: 'Hành khách',
-  payments: 'Thanh toán',
-  wallet: 'My Wallet',
-  bookings: 'Bookings',
-  reconcile: 'Duyệt nạp ví',
-  login: 'Đăng nhập'
-};
+const routeLabelMap: Record<string, string> = uiText.layout.routes;
 
 export const Header = () => {
   const location = useLocation();
@@ -66,7 +52,7 @@ export const Header = () => {
       {
         title: (
           <Link className="app-header__crumb" to="/dashboard" title="Home">
-            Home
+            {uiText.common.home}
           </Link>
         )
       },
@@ -110,7 +96,7 @@ export const Header = () => {
           <Space size={8} align="center">
             <ClockCircleOutlined style={{ color: '#486581' }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {isFetching > 0 ? 'Syncing modules...' : formatQuerySyncLabel(lastIdleSync)}
+              {isFetching > 0 ? uiText.common.sync.syncingModules : formatQuerySyncLabel(lastIdleSync)}
             </Text>
           </Space>
 
@@ -119,7 +105,7 @@ export const Header = () => {
               items: [
                 {
                   key: 'logout',
-                  label: 'Đăng xuất',
+                  label: uiText.layout.logout,
                   icon: <LogoutOutlined />,
                   onClick: () => logoutMutation.mutate()
                 }
@@ -132,7 +118,7 @@ export const Header = () => {
                 icon={<UserOutlined />}
               />
               <Space size={4}>
-                <Text strong>{user?.name || 'Unknown'}</Text>
+                <Text strong>{user?.name || uiText.common.unknown}</Text>
                 <Text type="secondary">({user ? roleLabels[user.role] : '-'})</Text>
               </Space>
               <DownOutlined />

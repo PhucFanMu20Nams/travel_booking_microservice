@@ -21,6 +21,7 @@ import {
   getPassengerTone,
   getRoleTone
 } from '@utils/presentation';
+import { uiText } from '@/constants/uiText';
 
 const { Text } = Typography;
 
@@ -42,7 +43,7 @@ export const UserListPage = () => {
   const columns: ColumnsType<UserDto> = useMemo(
     () => [
       {
-        title: 'Người dùng',
+        title: uiText.users.list.columns.identity,
         key: 'identity',
         render: (_, record) => (
           <div style={{ display: 'grid', gap: 8, minWidth: 260 }}>
@@ -55,21 +56,21 @@ export const UserListPage = () => {
             </Button>
             <Text>{record.name}</Text>
             <Text type="secondary" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-              {`USR-${record.id} · ${record.passportNumber} · ${record.age}y`}
+              {uiText.users.list.rowMeta(record.id, record.passportNumber, record.age)}
             </Text>
           </div>
         ),
         sorter: true
       },
       {
-        title: 'Vai trò',
+        title: uiText.users.list.columns.role,
         dataIndex: 'role',
         key: 'role',
         width: 130,
         render: (value: Role) => <StatusPill label={roleLabels[value]} tone={getRoleTone(value)} subtle />
       },
       {
-        title: 'Passenger',
+        title: uiText.users.list.columns.passenger,
         dataIndex: 'passengerType',
         key: 'passengerType',
         width: 150,
@@ -78,23 +79,27 @@ export const UserListPage = () => {
         )
       },
       {
-        title: 'Email verified',
+        title: uiText.common.emailVerification.column,
         dataIndex: 'isEmailVerified',
         key: 'isEmailVerified',
         width: 150,
         render: (value: boolean) => (
-          <StatusPill label={value ? 'Verified' : 'Pending'} tone={value ? 'success' : 'warning'} subtle />
+          <StatusPill
+            label={value ? uiText.common.emailVerification.verified : uiText.common.emailVerification.pending}
+            tone={value ? 'success' : 'warning'}
+            subtle
+          />
         )
       },
       {
-        title: 'Ngày tạo',
+        title: uiText.users.list.columns.createdAt,
         dataIndex: 'createdAt',
         key: 'createdAt',
         width: 170,
         render: (value: string) => formatDateTime(value)
       },
       {
-        title: 'Thao tác',
+        title: uiText.users.list.columns.actions,
         key: 'actions',
         width: 160,
         render: (_, record) => (
@@ -132,19 +137,19 @@ export const UserListPage = () => {
   return (
     <>
       <PageHeader
-        eyebrow="Identity directory"
-        title="Quản lý người dùng"
-        subtitle="List page nhấn mạnh business identity, role và verification state thay vì đặt ID làm trọng tâm."
+        eyebrow={uiText.users.list.eyebrow}
+        title={uiText.users.list.title}
+        subtitle={uiText.users.list.subtitle}
         meta={formatQuerySyncLabel(lastUpdatedAt)}
         extra={
           <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/users/create')}>
-            Tạo mới
+            {uiText.users.list.createAction}
           </Button>
         }
       />
 
       <FilterBar
-        summary={`${usersQuery.data?.data.length || 0} visible / ${usersQuery.data?.total || 0} total`}
+        summary={uiText.users.list.summary(usersQuery.data?.data.length || 0, usersQuery.data?.total || 0)}
         actions={
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => usersQuery.refetch()}>
@@ -155,7 +160,7 @@ export const UserListPage = () => {
         }
       >
         <SearchInput
-          placeholder="Tìm theo tên hoặc email"
+          placeholder={uiText.users.list.searchPlaceholder}
           value={params.searchTerm || ''}
           onSearch={(value) =>
             setParams((prev) => {
@@ -178,7 +183,7 @@ export const UserListPage = () => {
         dataSource={usersQuery.data?.data || []}
         locale={
           usersQuery.isError
-            ? { emptyText: 'Không tải được danh sách người dùng. Vui lòng thử lại.' }
+            ? { emptyText: uiText.users.list.loadError }
             : undefined
         }
         onChange={handleTableChange}
@@ -192,8 +197,8 @@ export const UserListPage = () => {
       />
 
       <ConfirmModal
-        title="Xóa user"
-        description="Bạn có chắc chắn muốn xóa user này không?"
+        title={uiText.users.list.deleteModal.title}
+        description={uiText.users.list.deleteModal.description}
         open={Boolean(deletingUserId)}
         confirmLoading={deleteMutation.isPending}
         onConfirm={async () => {

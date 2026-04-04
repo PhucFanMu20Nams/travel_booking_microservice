@@ -1,4 +1,5 @@
 import { Modal } from 'antd';
+import { uiText } from '@/constants/uiText';
 
 type ConfirmModalProps = {
   title?: string;
@@ -10,8 +11,8 @@ type ConfirmModalProps = {
 };
 
 export const ConfirmModal = ({
-  title = 'Xác nhận',
-  description = 'Bạn có chắc chắn muốn thực hiện thao tác này?',
+  title = uiText.common.confirmModal.title,
+  description = uiText.common.confirmModal.description,
   open,
   confirmLoading,
   onConfirm,
@@ -24,8 +25,8 @@ export const ConfirmModal = ({
       onOk={onConfirm}
       onCancel={onCancel}
       confirmLoading={confirmLoading}
-      okText="Xác nhận"
-      cancelText="Hủy"
+      okText={uiText.common.confirmModal.confirm}
+      cancelText={uiText.common.confirmModal.cancel}
       okButtonProps={{ danger: true }}
     >
       {description}

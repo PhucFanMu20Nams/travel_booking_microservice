@@ -13,6 +13,7 @@ import {
   SeatType
 } from '@/types/enums';
 import { SeatDto } from '@/types/seat.types';
+import { uiText } from '@/constants/uiText';
 
 type AirportLike = Pick<AirportDto, 'code' | 'name'> | undefined;
 
@@ -80,7 +81,9 @@ export const getAirlineColor = (flightNumber?: string | null): string => {
 };
 
 export const formatQuerySyncLabel = (timestamp?: number | null) =>
-  timestamp && timestamp > 0 ? `Last sync ${dayjs(timestamp).format('HH:mm:ss')}` : 'Awaiting sync';
+  timestamp && timestamp > 0
+    ? uiText.common.sync.lastSyncAt(dayjs(timestamp).format('HH:mm:ss'))
+    : uiText.common.sync.awaitingSync;
 
 export const getLatestQueryTimestamp = (...timestamps: Array<number | undefined>) => {
   const valid = timestamps.filter((value): value is number => Boolean(value && value > 0));

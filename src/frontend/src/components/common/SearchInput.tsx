@@ -1,6 +1,7 @@
 import { Input } from 'antd';
 import { SearchProps } from 'antd/es/input';
 import { useEffect, useRef, useState } from 'react';
+import { uiText } from '@/constants/uiText';
 
 type SearchInputProps = {
   placeholder?: string;
@@ -10,7 +11,7 @@ type SearchInputProps = {
 } & Omit<SearchProps, 'onSearch'>;
 
 export const SearchInput = ({
-  placeholder = 'Search...',
+  placeholder = uiText.common.searchPlaceholder,
   value,
   onSearch,
   delay = 300,

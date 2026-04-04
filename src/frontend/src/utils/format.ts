@@ -9,6 +9,7 @@ import {
   SeatClass,
   SeatType
 } from '@/types/enums';
+import { uiText } from '@/constants/uiText';
 
 export const formatDateTime = (value?: string | Date | null, format = 'DD/MM/YYYY HH:mm') => {
   if (!value) return '-';
@@ -107,7 +108,7 @@ export const seatTypeLabels: Record<SeatType, string> = {
 };
 
 export const passengerTypeLabels: Record<PassengerType, string> = {
-  [PassengerType.UNKNOWN]: 'Unknown',
+  [PassengerType.UNKNOWN]: uiText.common.unknown,
   [PassengerType.MALE]: 'Male',
   [PassengerType.FEMALE]: 'Female',
   [PassengerType.BABY]: 'Baby'
