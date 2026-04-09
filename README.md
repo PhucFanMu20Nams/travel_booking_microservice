@@ -3,6 +3,7 @@
 **Live Demo:** [https://www.phuctruongtrangiaa.app/login](https://www.phuctruongtrangiaa.app/login)  
 **CloudFront Domain:** `dztx0tthix52u.cloudfront.net`  
 **Evidence Pack:** [docs/evidence/README.md](docs/evidence/README.md)
+** Video: ** (https://buveduvn0-my.sharepoint.com/personal/phuc_ttg_st_buv_edu_vn/_layouts/15/guestaccess.aspx?share=IQDTiE85JDAVTJ0ICfSocxp1AaDQl1HXHorzOD5lwRgiEF8&e=Sd8dzY)
 
 This repository contains a cloud-native travel booking platform built with a microservices architecture. The system exposes a React/Vite frontend through nginx and a custom domain, while backend capabilities are split into dedicated services for identity, flight, passenger, booking, and payment. The deployed environment uses Amazon ECS/Fargate, Amazon RDS PostgreSQL, Amazon ECR, CloudFront, an internet-facing ALB, and GitHub Actions CI/CD with OIDC-based AWS access.
 
