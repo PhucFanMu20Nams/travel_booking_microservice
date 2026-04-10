@@ -9,7 +9,7 @@ type JwtPayload = {
   exp?: number;
 };
 
-type AuthState = {
+export type AuthState = {
   accessToken: string | null;
   refreshToken: string | null;
   user: UserDto | null;
@@ -33,6 +33,26 @@ const parseToken = (token?: string | null): JwtPayload | null => {
     return null;
   }
 };
+
+const resolveAdminMode = (user: UserDto | null) => user?.role === Role.ADMIN;
+
+const resolveCurrentUserId = (accessToken: string | null) => {
+  const payload = parseToken(accessToken);
+  if (!payload?.sub) return null;
+  const id = Number(payload.sub);
+  return Number.isFinite(id) ? id : null;
+};
+
+export const selectAuthFlags = (state: AuthState) => ({
+  isAuthenticated: state.isAuthenticated,
+  authInitialized: state.authInitialized
+});
+
+export const selectCurrentUser = (state: AuthState) => state.user;
+
+export const selectAdminMode = (state: AuthState) => resolveAdminMode(state.user);
+
+export const selectCurrentUserId = (state: AuthState) => resolveCurrentUserId(state.accessToken);
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -66,13 +86,8 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           authInitialized: true
         }),
-      isAdmin: () => get().user?.role === Role.ADMIN,
-      getUserIdFromToken: () => {
-        const payload = parseToken(get().accessToken);
-        if (!payload?.sub) return null;
-        const id = Number(payload.sub);
-        return Number.isFinite(id) ? id : null;
-      },
+      isAdmin: () => resolveAdminMode(get().user),
+      getUserIdFromToken: () => resolveCurrentUserId(get().accessToken),
       isTokenExpired: () => {
         const payload = parseToken(get().accessToken);
         if (!payload?.exp) return true;
@@ -90,3 +105,19 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+export const useAuthFlags = () => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const authInitialized = useAuthStore((state) => state.authInitialized);
+
+  return {
+    isAuthenticated,
+    authInitialized
+  };
+};
+
+export const useCurrentUser = () => useAuthStore(selectCurrentUser);
+
+export const useAdminMode = () => useAuthStore(selectAdminMode);
+
+export const useCurrentUserId = () => useAuthStore(selectCurrentUserId);

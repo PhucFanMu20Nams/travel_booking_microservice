@@ -1,16 +1,17 @@
 import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { Button, Result } from 'antd';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode, useAuthFlags } from '@stores/auth.store';
 
 export const AdminRoute = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, isAdmin } = useAuthStore();
+  const { isAuthenticated } = useAuthFlags();
+  const adminMode = useAdminMode();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!isAdmin()) {
+  if (!adminMode) {
     return (
       <Result
         status="403"

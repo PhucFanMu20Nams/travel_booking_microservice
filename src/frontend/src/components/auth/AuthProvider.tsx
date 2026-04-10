@@ -2,84 +2,89 @@ import { PropsWithChildren, useEffect } from 'react';
 import { authApi } from '@api/auth.api';
 import { userApi } from '@api/user.api';
 import { useAuthStore } from '@stores/auth.store';
-import { normalizeProblemError } from '@utils/helpers';
+import { redirectToLogin } from '@utils/navigation';
 
 const REFRESH_INTERVAL_MS = 25 * 60 * 1000;
 
 export const AuthProvider = ({ children }: PropsWithChildren) => {
-  const {
-    accessToken,
-    refreshToken,
-    setTokens,
-    setUser,
-    isTokenExpired,
-    clearAuth,
-    markInitialized
-  } = useAuthStore();
+  const refreshToken = useAuthStore((state) => state.refreshToken);
+  const setTokens = useAuthStore((state) => state.setTokens);
+  const setUser = useAuthStore((state) => state.setUser);
+  const clearAuth = useAuthStore((state) => state.clearAuth);
+  const markInitialized = useAuthStore((state) => state.markInitialized);
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
-    const initAuth = async () => {
-      if (!accessToken || !refreshToken) {
+    const bootstrapAuth = async () => {
+      const {
+        accessToken: initialAccessToken,
+        refreshToken: initialRefreshToken,
+        isTokenExpired
+      } = useAuthStore.getState();
+
+      if (!initialAccessToken || !initialRefreshToken) {
         markInitialized(true);
         return;
       }
 
       try {
         if (isTokenExpired()) {
-          const refreshResponse = await authApi.refreshToken({ refreshToken });
-          const nextAccessToken = refreshResponse.data?.access?.token;
-          const nextRefreshToken = refreshResponse.data?.refresh?.token || refreshToken;
+          const refreshResponse = await authApi.refreshToken({ refreshToken: initialRefreshToken });
+          const nextAccessToken = refreshResponse.data?.access?.token || null;
+          const nextRefreshToken = refreshResponse.data?.refresh?.token || initialRefreshToken;
           setTokens(nextAccessToken, nextRefreshToken);
         }
 
         const userResponse = await userApi.getMe();
 
-        if (!mounted) return;
+        if (cancelled) return;
 
         setUser(userResponse.data);
         markInitialized(true);
       } catch {
-        if (!mounted) return;
+        if (cancelled) return;
         clearAuth();
+        redirectToLogin();
       }
     };
 
-    void initAuth();
+    void bootstrapAuth();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
-  }, [
-    accessToken,
-    refreshToken,
-    setTokens,
-    setUser,
-    isTokenExpired,
-    clearAuth,
-    markInitialized
-  ]);
+  }, [clearAuth, markInitialized, setTokens, setUser]);
 
   useEffect(() => {
     if (!refreshToken) return;
 
-    const intervalId = window.setInterval(async () => {
+    let cancelled = false;
+
+    const refreshSession = async () => {
       try {
         const refreshResponse = await authApi.refreshToken({ refreshToken });
         const nextAccessToken = refreshResponse.data?.access?.token;
         const nextRefreshToken = refreshResponse.data?.refresh?.token || refreshToken;
+
+        if (cancelled) return;
+
         setTokens(nextAccessToken, nextRefreshToken);
-      } catch (error) {
-        const appError = normalizeProblemError(error);
-        if (appError.status >= 400) {
-          clearAuth();
-          window.location.href = '/login';
-        }
+      } catch {
+        if (cancelled) return;
+        clearAuth();
+        redirectToLogin();
       }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshSession();
     }, REFRESH_INTERVAL_MS);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [refreshToken, setTokens, clearAuth]);
 
   return <>{children}</>;

@@ -1,19 +1,16 @@
 import {
-  ClockCircleOutlined,
   DownOutlined,
   LogoutOutlined,
   MenuOutlined,
   UserOutlined
 } from '@ant-design/icons';
-import { useIsFetching } from '@tanstack/react-query';
 import { Avatar, Breadcrumb, Button, Dropdown, Layout, Space, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLogout } from '@hooks/useAuth';
-import { useAuthStore } from '@stores/auth.store';
+import { useCurrentUser } from '@stores/auth.store';
 import { useUiStore } from '@stores/ui.store';
 import { roleLabels } from '@utils/format';
-import { formatQuerySyncLabel } from '@utils/presentation';
 import { uiText } from '@/constants/uiText';
 
 const { Header: AntHeader } = Layout;
@@ -23,11 +20,9 @@ const routeLabelMap: Record<string, string> = uiText.layout.routes;
 
 export const Header = () => {
   const location = useLocation();
-  const { user } = useAuthStore();
+  const user = useCurrentUser();
   const { setMobileSidebarOpen } = useUiStore();
   const logoutMutation = useLogout();
-  const isFetching = useIsFetching();
-  const [lastIdleSync, setLastIdleSync] = useState<number | null>(Date.now());
 
   const breadcrumbItems = useMemo(() => {
     const parts = location.pathname.split('/').filter(Boolean);
@@ -60,12 +55,6 @@ export const Header = () => {
     ];
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (isFetching === 0) {
-      setLastIdleSync(Date.now());
-    }
-  }, [isFetching]);
-
   return (
     <AntHeader
       className="app-header-glass"
@@ -93,13 +82,6 @@ export const Header = () => {
         </div>
 
         <Space size={18} className="app-header__right">
-          <Space size={8} align="center">
-            <ClockCircleOutlined style={{ color: '#486581' }} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {isFetching > 0 ? uiText.common.sync.syncingModules : formatQuerySyncLabel(lastIdleSync)}
-            </Text>
-          </Space>
-
           <Dropdown
             menu={{
               items: [

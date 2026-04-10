@@ -12,7 +12,7 @@ import {
 import { Drawer, Layout, Menu, Space, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode } from '@stores/auth.store';
 import { useUiStore } from '@stores/ui.store';
 import { uiText } from '@/constants/uiText';
 
@@ -70,7 +70,7 @@ type NavigationContentProps = {
 const NavigationContent = ({ collapsed = false }: NavigationContentProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin } = useAuthStore();
+  const adminMode = useAdminMode();
   const { closeMobileSidebar } = useUiStore();
 
   return (
@@ -140,7 +140,7 @@ const NavigationContent = ({ collapsed = false }: NavigationContentProps) => {
         theme="dark"
         mode="inline"
         selectedKeys={[location.pathname]}
-        items={getMenuItems(isAdmin())}
+        items={getMenuItems(adminMode)}
         style={{ background: 'transparent', borderInlineEnd: 'none', paddingInline: 12 }}
         onClick={({ key }) => {
           if (typeof key === 'string' && key.startsWith('/')) {

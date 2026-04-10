@@ -12,7 +12,7 @@ import { SearchInput } from '@components/common/SearchInput';
 import { StatusPill } from '@components/common/StatusPill';
 import { useGetAirports } from '@hooks/useAirports';
 import { useCancelBooking, useGetBookings } from '@hooks/useBookings';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { BookingDto } from '@/types/booking.types';
 import { PaginationParams } from '@/types/common.types';
@@ -37,7 +37,7 @@ const { Text } = Typography;
 
 export const BookingListPage = () => {
   const navigate = useNavigate();
-  const { isAdmin } = useAuthStore();
+  const adminMode = useAdminMode();
 
   const [params, setParams] = useState<PaginationParams>({
     page: 1,
@@ -193,7 +193,7 @@ export const BookingListPage = () => {
         eyebrow="Booking ledger"
         title="Booking list"
         subtitle={
-          isAdmin()
+          adminMode
             ? 'Booking activity across the current system feed, prioritized by business context instead of raw ID order.'
             : 'Bookings are shown exactly as the current backend response returns them to this client.'
         }

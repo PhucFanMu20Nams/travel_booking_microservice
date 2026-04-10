@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useAuthStore } from '@stores/auth.store';
+import { selectAdminMode, selectCurrentUserId, useAuthStore } from '@stores/auth.store';
 import { Role } from '@/types/enums';
 
 const createToken = (payload: Record<string, unknown>) => {
@@ -69,6 +69,16 @@ describe('auth.store', () => {
     });
 
     expect(useAuthStore.getState().isAdmin()).toBe(true);
+    expect(selectAdminMode(useAuthStore.getState())).toBe(true);
+  });
+
+  it('selectCurrentUserId should derive the user id from the access token', () => {
+    const token = createToken({ sub: 77, exp: Math.floor(Date.now() / 1000) + 3600 });
+
+    useAuthStore.setState({ accessToken: token });
+
+    expect(useAuthStore.getState().getUserIdFromToken()).toBe(77);
+    expect(selectCurrentUserId(useAuthStore.getState())).toBe(77);
   });
 
   it('isTokenExpired should detect expired token', () => {

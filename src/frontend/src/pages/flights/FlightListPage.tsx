@@ -5,7 +5,7 @@ import {
   ReloadOutlined,
   ShoppingCartOutlined
 } from '@ant-design/icons';
-import { Button, Select, Space, Typography } from 'antd';
+import { Button, Select, Skeleton, Space, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { SorterResult } from 'antd/es/table/interface';
 import { useMemo, useState } from 'react';
@@ -15,7 +15,6 @@ import { DataTable } from '@components/common/DataTable';
 import { EmptyState } from '@components/common/EmptyState';
 import { FilterBar } from '@components/common/FilterBar';
 import { PageHeader } from '@components/common/PageHeader';
-import { PageSkeleton } from '@components/common/PageSkeleton';
 import { RouteBadge } from '@components/common/RouteBadge';
 import { SearchInput } from '@components/common/SearchInput';
 import { StatusPill } from '@components/common/StatusPill';
@@ -23,7 +22,7 @@ import { useGetAircrafts } from '@hooks/useAircrafts';
 import { useGetAirports } from '@hooks/useAirports';
 import { useGetFlights } from '@hooks/useFlights';
 import { useIsDesktop } from '@hooks/useResponsive';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { PaginationParams } from '@/types/common.types';
 import { FlightStatus } from '@/types/enums';
@@ -40,6 +39,7 @@ import {
 } from '@utils/presentation';
 
 const { Text } = Typography;
+const FLIGHT_RESULTS_PLACEHOLDER_COUNT = 3;
 
 const resolveFlightOrderBy = (
   sorter: SorterResult<FlightDto> | undefined,
@@ -60,10 +60,20 @@ const resolveFlightOrderBy = (
   return fallback;
 };
 
+const FlightResultsPlaceholder = () => (
+  <Space data-testid="flight-results-placeholder" direction="vertical" size={16} style={{ width: '100%' }}>
+    {Array.from({ length: FLIGHT_RESULTS_PLACEHOLDER_COUNT }).map((_, index) => (
+      <div key={index} className="app-surface" style={{ padding: 20, borderRadius: 24 }}>
+        <Skeleton active title={{ width: '38%' }} paragraph={{ rows: 3 }} />
+      </div>
+    ))}
+  </Space>
+);
+
 export const FlightListPage = () => {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
-  const { isAdmin } = useAuthStore();
+  const adminMode = useAdminMode();
   const [params, setParams] = useState<PaginationParams>({
     page: 1,
     pageSize: 10,
@@ -94,6 +104,34 @@ export const FlightListPage = () => {
     }
     return data.filter((flight) => flight.flightStatus === statusFilter);
   }, [flightsQuery.data?.data, statusFilter]);
+  const hasFlightsResult = Boolean(flightsQuery.data);
+  const isInitialResultsLoad = flightsQuery.isLoading && !hasFlightsResult;
+  const isResultsRefetching = flightsQuery.isFetching && hasFlightsResult;
+  const shouldShowEmptyState =
+    hasFlightsResult && !isInitialResultsLoad && !isResultsRefetching && tableData.length === 0;
+  const shouldShowMobilePlaceholder =
+    isInitialResultsLoad || (!tableData.length && isResultsRefetching);
+  const resultsLoading =
+    isInitialResultsLoad ||
+    isResultsRefetching ||
+    airportsQuery.isFetching ||
+    aircraftsQuery.isFetching;
+  const emptyState = (
+    <EmptyState
+      title="No flights found"
+      description="No flights match the current filters."
+      action={
+        <Button
+          onClick={() => {
+            setStatusFilter('all');
+            setParams((prev) => ({ ...prev, searchTerm: '', page: 1 }));
+          }}
+        >
+          Reset filters
+        </Button>
+      }
+    />
+  );
 
   const lastUpdatedAt = getLatestQueryTimestamp(
     airportsQuery.dataUpdatedAt,
@@ -178,7 +216,7 @@ export const FlightListPage = () => {
                 disabled={!bookable}
                 onClick={() => navigate(`/bookings/create?flightId=${record.id}`)}
               />
-              {isAdmin() && (
+              {adminMode && (
                 <Button icon={<AppstoreOutlined />} onClick={() => navigate(`/flights/${record.id}/seats`)} />
               )}
             </Space>
@@ -186,7 +224,7 @@ export const FlightListPage = () => {
         }
       }
     ],
-    [airportMap, isAdmin, navigate]
+    [airportMap, adminMode, navigate]
   );
 
   const handleTableChange = (
@@ -207,10 +245,6 @@ export const FlightListPage = () => {
     }));
   };
 
-  if ((flightsQuery.isLoading || airportsQuery.isLoading || aircraftsQuery.isLoading) && !flightsQuery.data) {
-    return <PageSkeleton variant="table" />;
-  }
-
   return (
     <>
       <PageHeader
@@ -219,7 +253,7 @@ export const FlightListPage = () => {
         subtitle="Table-first on desktop, card-first on mobile. Each record emphasizes route, schedule, base fare, and status instead of showing only raw columns."
         meta={formatQuerySyncLabel(lastUpdatedAt)}
         extra={
-          isAdmin() ? (
+          adminMode ? (
             <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/flights/create')}>
               Create new
             </Button>
@@ -292,52 +326,46 @@ export const FlightListPage = () => {
         />
       </FilterBar>
 
-      {!tableData.length ? (
-        <EmptyState
-          title="No flights found"
-          description="No flights match the current filters."
-          action={
-            <Button
-              onClick={() => {
-                setStatusFilter('all');
-                setParams((prev) => ({ ...prev, searchTerm: '', page: 1 }));
-              }}
-            >
-              Reset filters
-            </Button>
-          }
-        />
-      ) : !isDesktop ? (
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          {tableData.map((flight) => (
-            <FlightCard
-              key={flight.id}
-              flight={flight}
-              airportsMap={airportMap}
-              aircraftName={aircraftMap[flight.aircraftId]}
-              actionSlot={
-                <Space wrap>
-                  <Button icon={<EyeOutlined />} onClick={() => navigate(`/flights/${flight.id}`)}>
-                    Details
-                  </Button>
-                  <Button
-                    type="primary"
-                    disabled={!isFlightBookable(flight)}
-                    onClick={() => navigate(`/bookings/create?flightId=${flight.id}`)}
-                    icon={<ShoppingCartOutlined />}
-                  >
-                    Book now
-                  </Button>
-                </Space>
-              }
-            />
-          ))}
-        </Space>
+      {!isDesktop ? (
+        shouldShowEmptyState ? (
+          emptyState
+        ) : shouldShowMobilePlaceholder ? (
+          <FlightResultsPlaceholder />
+        ) : (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            {tableData.map((flight) => (
+              <FlightCard
+                key={flight.id}
+                flight={flight}
+                airportsMap={airportMap}
+                aircraftName={aircraftMap[flight.aircraftId]}
+                actionSlot={
+                  <Space wrap>
+                    <Button icon={<EyeOutlined />} onClick={() => navigate(`/flights/${flight.id}`)}>
+                      Details
+                    </Button>
+                    <Button
+                      type="primary"
+                      disabled={!isFlightBookable(flight)}
+                      onClick={() => navigate(`/bookings/create?flightId=${flight.id}`)}
+                      icon={<ShoppingCartOutlined />}
+                    >
+                      Book now
+                    </Button>
+                  </Space>
+                }
+              />
+            ))}
+          </Space>
+        )
       ) : (
         <DataTable<FlightDto>
-          loading={flightsQuery.isFetching || airportsQuery.isFetching || aircraftsQuery.isFetching}
+          loading={resultsLoading}
           columns={columns}
           dataSource={tableData}
+          locale={{
+            emptyText: shouldShowEmptyState ? emptyState : <span />
+          }}
           onChange={handleTableChange}
           pagination={{
             current: flightsQuery.data?.page || 1,

@@ -34,7 +34,7 @@ import { QueryStatusStrip } from '@components/common/QueryStatusStrip';
 import { SectionCard } from '@components/common/SectionCard';
 import { StatusPill } from '@components/common/StatusPill';
 import { useGetAirports } from '@hooks/useAirports';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode, useCurrentUser } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { BookingDto } from '@/types/booking.types';
 import { BookingStatus, FlightStatus } from '@/types/enums';
@@ -117,8 +117,8 @@ const formatDashboardCompactCurrency = (value?: number | null) => {
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
-  const { user, isAdmin } = useAuthStore();
-  const adminMode = isAdmin();
+  const user = useCurrentUser();
+  const adminMode = useAdminMode();
 
   const airportsQuery = useGetAirports();
 

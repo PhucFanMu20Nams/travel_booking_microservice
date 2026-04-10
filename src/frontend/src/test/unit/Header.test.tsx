@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { useQuery } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { Header } from '@components/layout/Header';
 import { useUiStore } from '@stores/ui.store';
@@ -12,6 +13,15 @@ const renderHeader = (route: string) =>
       initialEntries: [route]
     })
   });
+
+const PendingQueryProbe = () => {
+  useQuery({
+    queryKey: ['header', 'pending'],
+    queryFn: () => new Promise(() => undefined)
+  });
+
+  return null;
+};
 
 describe('Header', () => {
   it('renders breadcrumb for /dashboard and does not render route subtitle or heading title', () => {
@@ -58,5 +68,28 @@ describe('Header', () => {
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
     const currentCrumb = screen.getByText('My Wallet');
     expect(currentCrumb).toHaveClass('app-header__crumb--current');
+  });
+
+  it('does not show the removed global syncing banner while other queries are fetching', () => {
+    setAuthenticatedUser();
+    useUiStore.setState({
+      sidebarCollapsed: false,
+      mobileSidebarOpen: false
+    });
+
+    render(
+      <>
+        <Header />
+        <PendingQueryProbe />
+      </>,
+      {
+        wrapper: createTestWrapper({
+          useMemoryRouter: true,
+          initialEntries: ['/dashboard']
+        })
+      }
+    );
+
+    expect(screen.queryByText('Syncing modules...')).not.toBeInTheDocument();
   });
 });

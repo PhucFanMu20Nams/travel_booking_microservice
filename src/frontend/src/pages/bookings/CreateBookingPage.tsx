@@ -40,7 +40,7 @@ import { useGetFlightById, useGetFlights } from '@hooks/useFlights';
 import { useGetPassengerByUserId } from '@hooks/usePassengers';
 import { useGetPaymentById, useGetWalletMe, usePayBookingWithWallet } from '@hooks/usePayments';
 import { useGetAvailableSeats } from '@hooks/useSeats';
-import { useAuthStore } from '@stores/auth.store';
+import { useCurrentUserId } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { BookingCheckoutDto, BookingDto } from '@/types/booking.types';
 import { AppError, PaginationParams } from '@/types/common.types';
@@ -185,8 +185,7 @@ export const CreateBookingPage = () => {
   const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null);
   const [resumeHandledBookingId, setResumeHandledBookingId] = useState<number | null>(null);
 
-  const { getUserIdFromToken } = useAuthStore();
-  const currentUserId = getUserIdFromToken() || 0;
+  const currentUserId = useCurrentUserId() || 0;
 
   const flightsQuery = useGetFlights(flightParams);
   const bookingDeepLinkQuery = useGetBookingById(queryBookingId);

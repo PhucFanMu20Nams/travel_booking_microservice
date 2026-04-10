@@ -10,7 +10,9 @@ import { normalizeProblemError } from '@utils/helpers';
 
 export const useLogin = () => {
   const navigate = useNavigate();
-  const { setTokens, setUser, markInitialized } = useAuthStore();
+  const setTokens = useAuthStore((state) => state.setTokens);
+  const setUser = useAuthStore((state) => state.setUser);
+  const markInitialized = useAuthStore((state) => state.markInitialized);
 
   return useMutation({
     mutationFn: async (payload: LoginRequest) => {
@@ -38,10 +40,11 @@ export const useLogin = () => {
 
 export const useLogout = () => {
   const navigate = useNavigate();
-  const { accessToken, clearAuth } = useAuthStore();
+  const clearAuth = useAuthStore((state) => state.clearAuth);
 
   return useMutation({
     mutationFn: async () => {
+      const { accessToken } = useAuthStore.getState();
       if (!accessToken) return;
       try {
         await authApi.logout({ accessToken });

@@ -32,7 +32,8 @@ export const useGetFlights = (params: PaginationParams) =>
       const requestParams = buildPaginationParams(params);
       const response = await flightApi.getAll(requestParams);
       return toUiPagedResult(requestParams, response.data);
-    }
+    },
+    placeholderData: (previousData) => previousData
   });
 
 export const useGetFlightById = (id: number, options?: { enabled?: boolean }) =>

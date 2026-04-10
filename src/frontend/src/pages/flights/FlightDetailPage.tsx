@@ -14,7 +14,7 @@ import { useGetAircrafts } from '@hooks/useAircrafts';
 import { useGetAirports } from '@hooks/useAirports';
 import { useGetFlightById } from '@hooks/useFlights';
 import { useGetAvailableSeats } from '@hooks/useSeats';
-import { useAuthStore } from '@stores/auth.store';
+import { useAdminMode } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
 import { SeatClass, SeatType } from '@/types/enums';
 import { SeatDto } from '@/types/seat.types';
@@ -42,7 +42,7 @@ export const FlightDetailPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const flightId = parseRouteId(id);
-  const { isAdmin } = useAuthStore();
+  const adminMode = useAdminMode();
 
   const flightQuery = useGetFlightById(flightId);
   const seatsQuery = useGetAvailableSeats(flightId);
@@ -125,7 +125,7 @@ export const FlightDetailPage = () => {
               >
                 Đặt vé
               </Button>
-              {isAdmin() && (
+              {adminMode && (
                 <Button size="large" onClick={() => navigate(`/flights/${flightId}/seats`)}>
                   Quản lý ghế
                 </Button>
