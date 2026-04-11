@@ -342,10 +342,10 @@ export const DashboardPage = () => {
 
       <EntityHero
         eyebrow={adminMode ? 'Admin workspace' : 'Traveler workspace'}
-        title={adminMode ? 'Booking operations at a glance' : 'Your trips'}
+        title={adminMode ? 'Operations at a glance' : 'Your trips'}
         subtitle={
           adminMode
-            ? 'Track inventory, booking activity, and flight movement in one view. No fake analytics; only signals currently available from the backend are shown.'
+            ? 'Create flights, review booking activity, and monitor flight movement in one view. No fake analytics; only signals currently available from the backend are shown.'
             : 'Start from flights first, then review bookings or open your wallet when you need to continue the journey.'
         }
         tags={
@@ -357,8 +357,8 @@ export const DashboardPage = () => {
         extra={
           adminMode ? (
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
-              <Button type="primary" size="large" onClick={() => navigate('/bookings/create')}>
-                Create booking
+              <Button type="primary" size="large" onClick={() => navigate('/flights/create')}>
+                Create flight
               </Button>
               <Button size="large" onClick={() => navigate('/flights')}>
                 Browse flights

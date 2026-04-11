@@ -1,9 +1,12 @@
-import { screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { DashboardPage } from '@pages/dashboard/DashboardPage';
 import { server } from '@/test/msw/server';
-import { renderWithRoute } from '@/test/utils';
+import { createTestQueryClient, renderWithRoute } from '@/test/utils';
 import { airports, makeBooking, makeFlight, setAuthenticatedUser } from '@/test/frontend.fixtures';
 import { BookingStatus, FlightStatus, Role } from '@/types/enums';
 import { formatCurrency } from '@utils/format';
@@ -53,9 +56,63 @@ describe('dashboard page', () => {
     expect(screen.getByText('Passengers · Ready')).toBeInTheDocument();
     expect(screen.getByText('Analytics · Ready')).toBeInTheDocument();
     expect(includePaymentSummaryParam).toBe('false');
+    expect(screen.getByText('Operations at a glance')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create flight' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Browse flights' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create booking' })).not.toBeInTheDocument();
 
     const metricsGrid = screen.getByTestId('dashboard-metrics-grid');
     expect(within(metricsGrid).getAllByTestId(/dashboard-metric-/)).toHaveLength(5);
+  });
+
+  it('navigates the admin hero primary CTA to the flight creation page', async () => {
+    const user = userEvent.setup();
+    const queryClient = createTestQueryClient();
+
+    setAuthenticatedUser({ role: Role.ADMIN });
+
+    server.use(
+      http.get('/api/v1/airport/get-all', () => HttpResponse.json(airports)),
+      http.get('/api/v1/user/get', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      ),
+      http.get('/api/v1/passenger/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      ),
+      http.get('/api/v1/flight/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      ),
+      http.get('/api/v1/booking/get-all', () =>
+        HttpResponse.json({
+          result: [],
+          total: 0
+        })
+      )
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/flights/create" element={<div>Flight form route</div>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Create flight' }));
+
+    expect(await screen.findByText('Flight form route')).toBeInTheDocument();
   });
 
   it('keeps same-day upcoming flights visible by using departureDate fallback', async () => {
