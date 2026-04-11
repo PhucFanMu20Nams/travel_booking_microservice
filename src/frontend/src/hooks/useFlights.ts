@@ -36,14 +36,22 @@ export const useGetFlights = (params: PaginationParams) =>
     placeholderData: (previousData) => previousData
   });
 
-export const useGetFlightById = (id: number, options?: { enabled?: boolean }) =>
+type UseGetFlightByIdOptions = {
+  enabled?: boolean;
+  retry?: boolean | number;
+  refetchOnWindowFocus?: boolean;
+};
+
+export const useGetFlightById = (id: number, options?: UseGetFlightByIdOptions) =>
   useQuery({
     queryKey: flightKeys.detail(id),
     queryFn: async () => {
       const response = await flightApi.getById(id);
       return response.data;
     },
-    enabled: (options?.enabled ?? true) && id > 0
+    enabled: (options?.enabled ?? true) && id > 0,
+    retry: options?.retry,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus
   });
 
 export const useCreateFlight = () => {

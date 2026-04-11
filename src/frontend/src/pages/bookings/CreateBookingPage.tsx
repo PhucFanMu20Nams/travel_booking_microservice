@@ -172,6 +172,7 @@ export const CreateBookingPage = () => {
     searchTerm: ''
   });
   const [selectedFlightId, setSelectedFlightId] = useState<number>(queryBookingId > 0 ? 0 : queryFlightId || 0);
+  const [resolvedDeepLinkedFlight, setResolvedDeepLinkedFlight] = useState<FlightDto | null>(null);
   const [selectedSeatNumber, setSelectedSeatNumber] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [checkout, setCheckout] = useState<BookingCheckoutDto | null>(null);
@@ -186,6 +187,7 @@ export const CreateBookingPage = () => {
   const [resumeHandledBookingId, setResumeHandledBookingId] = useState<number | null>(null);
 
   const currentUserId = useCurrentUserId() || 0;
+  const isDeepLinkedFlightFlow = queryBookingId <= 0 && queryFlightId > 0;
 
   const flightsQuery = useGetFlights(flightParams);
   const bookingDeepLinkQuery = useGetBookingById(queryBookingId);
@@ -194,18 +196,31 @@ export const CreateBookingPage = () => {
     () => flights.find((flight) => flight.id === selectedFlightId) || null,
     [flights, selectedFlightId]
   );
+  const deepLinkedFlightFromCurrentPage = useMemo(
+    () => flights.find((flight) => flight.id === queryFlightId) || null,
+    [flights, queryFlightId]
+  );
   const activePaymentId =
     checkout?.payment?.id ||
     (bookingDeepLinkQuery.data?.bookingStatus === BookingStatus.PENDING_PAYMENT
       ? (bookingDeepLinkQuery.data?.paymentId ?? 0)
       : 0);
   const shouldFetchSelectedFlightDetail =
-    selectedFlightId > 0 && !selectedFlightFromCurrentPage && !flightsQuery.isLoading;
+    selectedFlightId > 0 &&
+    (!isDeepLinkedFlightFlow || selectedFlightId !== queryFlightId) &&
+    !selectedFlightFromCurrentPage &&
+    !flightsQuery.isLoading;
+  const shouldFetchDeepLinkedFlightDetail =
+    isDeepLinkedFlightFlow && queryFlightId > 0 && !deepLinkedFlightFromCurrentPage && !flightsQuery.isLoading;
   const shouldFetchSeatInventory = selectedFlightId > 0 && step === 1;
   const shouldFetchAircraftCatalog = step === 0;
   const shouldFetchWallet = step === 3 && Boolean(checkout);
   const shouldFetchPayment = activePaymentId > 0;
 
+  const deepLinkedFlightQuery = useGetFlightById(queryFlightId, {
+    enabled: shouldFetchDeepLinkedFlightDetail,
+    retry: false
+  });
   const selectedFlightQuery = useGetFlightById(selectedFlightId, {
     enabled: shouldFetchSelectedFlightDetail
   });
@@ -388,12 +403,57 @@ export const CreateBookingPage = () => {
     () => Object.fromEntries((aircraftsQuery.data || []).map((item) => [item.id, item.name])) as Record<number, string>,
     [aircraftsQuery.data]
   );
+  const deepLinkedFlight = useMemo(() => {
+    if (!isDeepLinkedFlightFlow) {
+      return null;
+    }
+
+    if (deepLinkedFlightFromCurrentPage) {
+      return deepLinkedFlightFromCurrentPage;
+    }
+
+    if (deepLinkedFlightQuery.data?.id === queryFlightId) {
+      return deepLinkedFlightQuery.data;
+    }
+
+    return null;
+  }, [deepLinkedFlightFromCurrentPage, deepLinkedFlightQuery.data, isDeepLinkedFlightFlow, queryFlightId]);
+  const deepLinkedFlightError = deepLinkedFlightQuery.error ? normalizeProblemError(deepLinkedFlightQuery.error) : null;
+  const stableDeepLinkedFlight =
+    (deepLinkedFlight?.id === queryFlightId ? deepLinkedFlight : null) ||
+    (resolvedDeepLinkedFlight?.id === queryFlightId ? resolvedDeepLinkedFlight : null);
+
+  useEffect(() => {
+    if (!isDeepLinkedFlightFlow) {
+      setResolvedDeepLinkedFlight(null);
+      return;
+    }
+
+    if (deepLinkedFlight?.id === queryFlightId && isFlightBookable(deepLinkedFlight)) {
+      setResolvedDeepLinkedFlight(deepLinkedFlight);
+      return;
+    }
+
+    if (deepLinkedFlightError) {
+      setResolvedDeepLinkedFlight(null);
+    }
+  }, [deepLinkedFlight, deepLinkedFlightError, isDeepLinkedFlightFlow, queryFlightId]);
 
   const selectedFlight = useMemo(() => {
     if (selectedFlightFromCurrentPage) return selectedFlightFromCurrentPage;
+    if (isDeepLinkedFlightFlow && selectedFlightId === queryFlightId && stableDeepLinkedFlight?.id === selectedFlightId) {
+      return stableDeepLinkedFlight;
+    }
     if (selectedFlightQuery.data?.id === selectedFlightId) return selectedFlightQuery.data;
     return null;
-  }, [selectedFlightFromCurrentPage, selectedFlightId, selectedFlightQuery.data]);
+  }, [
+    isDeepLinkedFlightFlow,
+    queryFlightId,
+    stableDeepLinkedFlight,
+    selectedFlightFromCurrentPage,
+    selectedFlightId,
+    selectedFlightQuery.data
+  ]);
 
   const selectedSeat = useMemo(
     () => seats.find((seat) => seat.seatNumber === selectedSeatNumber) || null,
@@ -416,6 +476,18 @@ export const CreateBookingPage = () => {
     };
   }, [checkout, selectedSeat]);
   const selectedFlightIsBookable = isFlightBookable(selectedFlight);
+  const isResolvingDeepLinkedFlight =
+    isDeepLinkedFlightFlow &&
+    !stableDeepLinkedFlight &&
+    !deepLinkedFlightError &&
+    (flightsQuery.isLoading || deepLinkedFlightQuery.isLoading || deepLinkedFlightQuery.isFetching);
+  const shouldRenderFocusedFlightSelection =
+    isDeepLinkedFlightFlow && selectedFlightId === queryFlightId && Boolean(selectedFlight && selectedFlightIsBookable);
+  const shouldFallbackToFlightBrowse =
+    isDeepLinkedFlightFlow && !isResolvingDeepLinkedFlight && !shouldRenderFocusedFlightSelection;
+  const focusedFlightSelection = shouldRenderFocusedFlightSelection ? selectedFlight : null;
+  const shouldHideFlightContext = step === 0 && shouldFallbackToFlightBrowse;
+  const visibleFlightContext = shouldHideFlightContext ? null : selectedFlight;
   const isWalletLoading = shouldFetchWallet && (walletQuery.isLoading || (walletQuery.isFetching && !walletQuery.data));
 
   const seatGrid = useMemo(() => buildSeatGrid(seats), [seats]);
@@ -688,51 +760,87 @@ export const CreateBookingPage = () => {
     };
   }, [isHardLocked]);
 
+  const handleChangeFlight = () => {
+    navigate('/flights');
+  };
+
   const renderFlightSelection = () => (
     <SectionCard title="Select a flight" subtitle="Step 1 · Select a route with the right schedule and fare">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        {selectedFlightId > 0 && selectedFlight && !selectedFlightIsBookable && (
+        {isResolvingDeepLinkedFlight ? (
+          <Alert
+            type="info"
+            showIcon
+            message="Loading the selected flight"
+            description="The booking flow is verifying the deep-linked flight before continuing."
+          />
+        ) : shouldFallbackToFlightBrowse ? (
           <Alert
             type="warning"
             showIcon
-            message="The deep-linked flight is no longer open for booking"
-            description="Please choose another flight that is Scheduled or Delayed and has not departed yet."
+            message={
+              deepLinkedFlightError?.status === 404
+                ? 'The deep-linked flight could not be found'
+                : deepLinkedFlight
+                  ? 'The deep-linked flight is no longer open for booking'
+                  : 'The deep-linked flight could not be loaded'
+            }
+            description={
+              deepLinkedFlightError?.status === 404
+                ? 'Please choose another available flight to continue.'
+                : deepLinkedFlight
+                  ? 'Please choose another flight that is Scheduled or Delayed and has not departed yet.'
+                  : 'Please choose another flight or refresh the page and try again.'
+            }
           />
-        )}
+        ) : null}
 
-        {flights.map((flight: FlightDto) => (
+        {(focusedFlightSelection ? [focusedFlightSelection] : flights).map((flight: FlightDto) => (
           <FlightCard
             key={flight.id}
             flight={flight}
             airportsMap={airportMap}
             aircraftName={aircraftMap[flight.aircraftId]}
             actionSlot={
-              <Button
-                type="primary"
-                size="large"
-                disabled={!isFlightBookable(flight)}
-                onClick={() => {
-                  setSelectedFlightId(flight.id);
-                  setSelectedSeatNumber(null);
-                  setStep(1);
-                }}
-              >
-                {isFlightBookable(flight) ? 'Select flight' : 'Unavailable'}
-              </Button>
+              <Space wrap>
+                {focusedFlightSelection && flight.id === queryFlightId && (
+                  <Button size="large" onClick={handleChangeFlight}>
+                    Browse flights
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  size="large"
+                  disabled={!isFlightBookable(flight)}
+                  onClick={() => {
+                    setSelectedFlightId(flight.id);
+                    setSelectedSeatNumber(null);
+                    setStep(1);
+                  }}
+                >
+                  {isFlightBookable(flight) ? 'Select flight' : 'Unavailable'}
+                </Button>
+              </Space>
             }
           />
         ))}
 
-        {!flightsQuery.isLoading && flights.length === 0 && <Empty description="No flights available" />}
+        {!isResolvingDeepLinkedFlight &&
+          !flightsQuery.isLoading &&
+          (focusedFlightSelection ? [focusedFlightSelection] : flights).length === 0 && (
+            <Empty description="No flights available" />
+          )}
 
-        <Pagination
-          current={flightsQuery.data?.page || 1}
-          pageSize={flightsQuery.data?.pageSize || 5}
-          total={flightsQuery.data?.total || 0}
-          showSizeChanger
-          pageSizeOptions={['5', '10', '20']}
-          onChange={handleFlightPageChange}
-        />
+        {!shouldRenderFocusedFlightSelection && !isResolvingDeepLinkedFlight && (
+          <Pagination
+            current={flightsQuery.data?.page || 1}
+            pageSize={flightsQuery.data?.pageSize || 5}
+            total={flightsQuery.data?.total || 0}
+            showSizeChanger
+            pageSizeOptions={['5', '10', '20']}
+            onChange={handleFlightPageChange}
+          />
+        )}
       </Space>
     </SectionCard>
   );
@@ -1205,7 +1313,11 @@ export const CreateBookingPage = () => {
         eyebrow={step === 4 ? 'Booking completed' : 'Checkout flow'}
         title={step === 4 ? 'Booking confirmed' : 'New booking'}
         subtitle="A 5-step flow with seat-aware pricing, a pending payment state, and a boarding pass that appears only after successful payment."
-        meta={selectedFlight ? `${selectedFlight.flightNumber} · ${formatDateLabel(selectedFlight.flightDate)}` : 'Select a flight to begin'}
+        meta={
+          visibleFlightContext
+            ? `${visibleFlightContext.flightNumber} · ${formatDateLabel(visibleFlightContext.flightDate)}`
+            : 'Select a flight to begin'
+        }
       />
 
       <SectionCard title="Booking steps" subtitle="Checkout-inspired flow for route, seat, payment and confirmation">
@@ -1244,10 +1356,10 @@ export const CreateBookingPage = () => {
 
           <Col xs={24} lg={9} xl={8}>
             <div style={screens.lg ? { position: 'sticky', top: 108 } : undefined}>
-              {selectedFlight ? (
+              {visibleFlightContext ? (
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <BookingSummary
-                    flight={selectedFlight}
+                    flight={visibleFlightContext}
                     selectedSeat={selectedSeatSummary || undefined}
                     passenger={passengerQuery.data}
                     airportsMap={airportMap}
@@ -1258,7 +1370,7 @@ export const CreateBookingPage = () => {
                       <Text type="secondary">
                         {selectedSeatSummary
                           ? `Seat ${selectedSeatSummary.seatNumber} selected · ${seatClassLabels[selectedSeatSummary.seatClass]}${selectedSeatSummary.seatType ? ` / ${seatTypeLabels[selectedSeatSummary.seatType]}` : ''} · ${formatCurrency(selectedSeatSummary.price, selectedSeatSummary.currency)}`
-                          : `No seat selected yet · Base fare ${formatCurrency(selectedFlight.price)} · Economy auto-assign if available`}
+                          : `No seat selected yet · Base fare ${formatCurrency(visibleFlightContext.price)} · Economy auto-assign if available`}
                       </Text>
                       <Text type="secondary">
                         {passengerQuery.data

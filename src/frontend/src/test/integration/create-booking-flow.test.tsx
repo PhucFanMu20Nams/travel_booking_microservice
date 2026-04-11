@@ -144,6 +144,7 @@ const renderCreateBookingWithLocationProbe = (route = '/bookings/create') => {
         <Routes>
           <Route path="/bookings/create" element={<CreateBookingPage />} />
           <Route path="/bookings/:id" element={<div>Booking detail</div>} />
+          <Route path="/flights" element={<div>Flight list</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -187,7 +188,10 @@ describe('create booking flow', () => {
       expect(await screen.findByText('The deep-linked flight is no longer open for booking')).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Select a flight' })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Select a seat' })).not.toBeInTheDocument();
+      expect(screen.getByText('VN123')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
+      expect(screen.getByText('Select a flight to begin')).toBeInTheDocument();
+      expect(screen.queryByText('Booking summary')).not.toBeInTheDocument();
       expect(requestCounts.flightById).toBe(0);
       expect(requestCounts.seatInventory).toBe(0);
       expect(requestCounts.walletMe).toBe(0);
@@ -214,7 +218,7 @@ describe('create booking flow', () => {
       selectedFlight: futureFlight
     });
 
-    renderWithRoute(<CreateBookingPage />, {
+    const { container } = renderWithRoute(<CreateBookingPage />, {
       route: '/bookings/create',
       path: '/bookings/create'
     });
@@ -222,6 +226,201 @@ describe('create booking flow', () => {
     expect(await screen.findByText('VN123')).toBeInTheDocument();
     expect(screen.getByText('VN002')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
+    expect(screen.getByText('Select a flight to begin')).toBeInTheDocument();
+    expect(screen.queryByText('Booking summary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Browse flights' })).not.toBeInTheDocument();
+    expect(container.querySelector('.ant-pagination')).not.toBeNull();
+  });
+
+  it('renders only the deep-linked flight when flightId is valid and bookable', async () => {
+    const deepLinkedFlight = makeFlight({
+      id: 77,
+      flightNumber: 'QH777',
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+    const browseFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-11T08:00:00.000Z',
+      arriveDate: '2099-03-11T10:00:00.000Z'
+    });
+
+    const requestCounts = mockCreateBookingDependencies({
+      flights: [browseFlight],
+      selectedFlight: deepLinkedFlight
+    });
+
+    const { container } = renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create?flightId=77',
+      path: '/bookings/create'
+    });
+
+    expect((await screen.findAllByText('QH777')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('VN123')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select flight' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Browse flights' })).toBeInTheDocument();
+    expect(screen.getByText('Booking summary')).toBeInTheDocument();
+    expect(screen.getByText('QH777 · 10 Mar 2099')).toBeInTheDocument();
+    expect(container.querySelector('.ant-pagination')).toBeNull();
+    expect(requestCounts.flightById).toBe(1);
+  });
+
+  it('does not flash unrelated flights while resolving a valid deep-linked flight', async () => {
+    const deepLinkedFlight = makeFlight({
+      id: 77,
+      flightNumber: 'QH777',
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+    const browseFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-11T08:00:00.000Z',
+      arriveDate: '2099-03-11T10:00:00.000Z'
+    });
+    let releaseDeepLinkedFlight: (() => void) | null = null;
+
+    mockCreateBookingDependencies({
+      flights: [browseFlight],
+      selectedFlight: deepLinkedFlight
+    });
+
+    server.use(
+      http.get('/api/v1/flight/get-by-id', () =>
+        new Promise((resolve) => {
+          releaseDeepLinkedFlight = () => resolve(HttpResponse.json(deepLinkedFlight));
+        })
+      )
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create?flightId=77',
+      path: '/bookings/create'
+    });
+
+    expect(await screen.findByText('Loading the selected flight')).toBeInTheDocument();
+    expect(screen.queryByText('VN123')).not.toBeInTheDocument();
+    expect(screen.queryByText('Booking summary')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(releaseDeepLinkedFlight).not.toBeNull();
+    });
+
+    await act(async () => {
+      releaseDeepLinkedFlight?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the selected flight')).not.toBeInTheDocument();
+    });
+
+    expect((await screen.findAllByText('QH777')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('VN123')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the full list when the deep-linked flight returns 404', async () => {
+    const browseFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-11T08:00:00.000Z',
+      arriveDate: '2099-03-11T10:00:00.000Z'
+    });
+
+    mockCreateBookingDependencies({
+      flights: [browseFlight],
+      selectedFlight: browseFlight
+    });
+
+    server.use(
+      http.get('/api/v1/flight/get-by-id', () => new HttpResponse(null, { status: 404 }))
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create?flightId=999',
+      path: '/bookings/create'
+    });
+
+    expect(await screen.findByText('The deep-linked flight could not be found')).toBeInTheDocument();
+    expect(screen.getByText('VN123')).toBeInTheDocument();
+    expect(screen.getByText('Select a flight to begin')).toBeInTheDocument();
+    expect(screen.queryByText('Booking summary')).not.toBeInTheDocument();
+  });
+
+  it('navigates back to the flight list from focused mode', async () => {
+    const deepLinkedFlight = makeFlight({
+      id: 77,
+      flightNumber: 'QH777',
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+    const browseFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-11T08:00:00.000Z',
+      arriveDate: '2099-03-11T10:00:00.000Z'
+    });
+    const user = userEvent.setup();
+
+    mockCreateBookingDependencies({
+      flights: [browseFlight],
+      selectedFlight: deepLinkedFlight
+    });
+
+    renderCreateBookingWithLocationProbe('/bookings/create?flightId=77');
+
+    expect((await screen.findAllByText('QH777')).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Browse flights' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/flights');
+    });
+    expect(screen.getByText('Flight list')).toBeInTheDocument();
+  });
+
+  it('returns to the same single-flight view when going back from seat selection in focused mode', async () => {
+    const deepLinkedFlight = makeFlight({
+      id: 77,
+      flightNumber: 'QH777',
+      departureDate: '2099-03-10T08:00:00.000Z',
+      arriveDate: '2099-03-10T10:00:00.000Z'
+    });
+    const browseFlight = makeFlight({
+      id: 1,
+      flightNumber: 'VN123',
+      departureDate: '2099-03-11T08:00:00.000Z',
+      arriveDate: '2099-03-11T10:00:00.000Z'
+    });
+    const user = userEvent.setup();
+
+    mockCreateBookingDependencies({
+      flights: [browseFlight],
+      selectedFlight: deepLinkedFlight,
+      seats: [makeSeat({ id: 10, flightId: 77, seatNumber: '1A' })]
+    });
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create?flightId=77',
+      path: '/bookings/create'
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Browse flights' })).toBeInTheDocument();
+      expect(screen.queryByText('VN123')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select flight' }));
+    expect(await screen.findByRole('button', { name: 'Back' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Browse flights' })).toBeInTheDocument();
+      expect(screen.queryByText('VN123')).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    expect(screen.queryByText('VN123')).not.toBeInTheDocument();
   });
 
   it(
@@ -932,6 +1131,59 @@ describe('create booking flow', () => {
     expect(requestCounts.seatInventory).toBe(0);
     expect(requestCounts.walletMe).toBeGreaterThan(0);
     expect(paymentByIdCalls).toBeGreaterThan(0);
+  }, CI_FLAKY_TEST_TIMEOUT_MS);
+
+  it('prioritizes bookingId resume flow over flightId deep-link mode', async () => {
+    const selectedFlight = makeFlight({ id: 1, flightNumber: 'VN678' });
+    const pendingBooking = makeBooking({
+      id: 55,
+      flightId: 1,
+      flightNumber: 'VN678',
+      bookingStatus: BookingStatus.PENDING_PAYMENT,
+      paymentId: 500,
+      paymentSummary: null
+    });
+    const pendingPayment = makePayment({
+      id: 500,
+      bookingId: 55,
+      paymentStatus: PaymentStatus.PENDING,
+      completedAt: null,
+      paymentCode: 'TBK-55',
+      transferInstruction: {
+        bankName: 'Vietcombank',
+        accountName: 'TRAVEL BOOKING COMPANY',
+        accountNumber: '1029384756',
+        amount: 2625000,
+        currency: 'VND',
+        content: 'TBK-55',
+        expiresAt: '2099-03-10T07:15:00.000Z'
+      }
+    });
+
+    const requestCounts = mockCreateBookingDependencies({
+      flights: [selectedFlight],
+      selectedFlight,
+      seats: [makeSeat({ id: 10, flightId: 1, seatNumber: '1A' })]
+    });
+
+    server.use(
+      http.get('/api/v1/booking/get-by-id', () => HttpResponse.json(pendingBooking)),
+      http.get('/api/v1/payment/get-by-id', () => HttpResponse.json(pendingPayment))
+    );
+
+    renderWithRoute(<CreateBookingPage />, {
+      route: '/bookings/create?bookingId=55&flightId=1',
+      path: '/bookings/create'
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Loading payment for booking #55')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Pay with wallet' })).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    expect(screen.queryByRole('heading', { name: 'Select a flight' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Browse flights' })).not.toBeInTheDocument();
+    expect(requestCounts.seatInventory).toBe(0);
   }, CI_FLAKY_TEST_TIMEOUT_MS);
 
   it('redirects payment deep-link to detail when booking is already confirmed', async () => {
