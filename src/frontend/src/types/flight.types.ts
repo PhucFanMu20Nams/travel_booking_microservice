@@ -1,3 +1,4 @@
+import { PaginationParams } from '@/types/common.types';
 import { FlightStatus } from '@/types/enums';
 
 export interface FlightDto {
@@ -27,4 +28,10 @@ export interface CreateFlightRequest {
   arriveDate: Date;
   arriveAirportId: number;
   durationMinutes: number;
+}
+
+export interface GetFlightsParams extends PaginationParams {
+  departureAirportId?: number | null;
+  arriveAirportId?: number | null;
+  flightStatus?: FlightStatus | null;
 }

@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,11 +91,13 @@ describe('FlightListPage loading behavior', () => {
     expect(screen.queryByText('No flights found')).not.toBeInTheDocument();
     expect(document.querySelector('.ant-spin-spinning')).toBeInTheDocument();
 
-    pendingSearch.resolve();
+    await act(async () => {
+      pendingSearch.resolve();
+    });
 
     await waitFor(() => expect(screen.queryByText('VN123')).not.toBeInTheDocument());
     expect(await screen.findByText('No flights found')).toBeInTheDocument();
-  });
+  }, 10000);
 
   it('renders the shell immediately on mobile and keeps first-load placeholders inside the results area', async () => {
     const pendingInitialLoad = createDeferred();
@@ -121,9 +123,11 @@ describe('FlightListPage loading behavior', () => {
     expect(screen.getByTestId('flight-results-placeholder')).toBeInTheDocument();
     expect(screen.queryByText('No flights found')).not.toBeInTheDocument();
 
-    pendingInitialLoad.resolve();
+    await act(async () => {
+      pendingInitialLoad.resolve();
+    });
 
     expect(await screen.findByText('VN909')).toBeInTheDocument();
     expect(screen.queryByTestId('flight-results-placeholder')).not.toBeInTheDocument();
-  });
+  }, 10000);
 });

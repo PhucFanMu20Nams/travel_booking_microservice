@@ -10,6 +10,7 @@ import mapper from '@/flight/mappings';
 import { GetFlightsQueryDto } from '@/flight/dtos/get-flights-query.dto';
 import { getEffectiveFlightStatus } from '@/flight/utils/flight-status';
 import { getVietnamBusinessDayStart } from '@/flight/utils/flight-date';
+import { FlightStatus } from '@/flight/enums/flight-status.enum';
 import { Role } from 'building-blocks/contracts/identity.contract';
 import { Request } from 'express';
 import { RateLimitPolicy } from 'building-blocks/rate-limit/rate-limit.decorator';
@@ -26,6 +27,9 @@ export class GetFlights {
   orderBy = 'id';
   order: 'ASC' | 'DESC' = 'ASC';
   searchTerm?: string = null;
+  departureAirportId?: number;
+  arriveAirportId?: number;
+  flightStatus?: number;
   isAdmin = false;
 
   constructor(request: Partial<GetFlights> = {}) {
@@ -59,6 +63,9 @@ export class GetFlightsController {
     example: 'id'
   })
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
+  @ApiQuery({ name: 'departureAirportId', required: false, type: Number })
+  @ApiQuery({ name: 'arriveAirportId', required: false, type: Number })
+  @ApiQuery({ name: 'flightStatus', required: false, enum: FlightStatus })
   public async getFlights(
     @Query() query: GetFlightsQueryDto,
     @Req() request: JwtRequest
@@ -83,8 +90,9 @@ export class GetFlightsHandler implements IQueryHandler<GetFlights> {
   constructor(@Inject('IFlightRepository') private readonly flightRepository: IFlightRepository) {}
 
   async execute(query: GetFlights): Promise<PagedResult<FlightDto[] | null>> {
+    const now = new Date();
     const normalizedSearchTerm = query.searchTerm || null;
-    const minFlightDate = query.isAdmin ? undefined : getVietnamBusinessDayStart(new Date());
+    const minFlightDate = query.isAdmin ? undefined : getVietnamBusinessDayStart(now);
 
     const [flightsEntity, total] = await this.flightRepository.findFlights({
       page: query.page,
@@ -92,7 +100,11 @@ export class GetFlightsHandler implements IQueryHandler<GetFlights> {
       orderBy: query.orderBy,
       order: query.order,
       searchTerm: normalizedSearchTerm,
-      minFlightDate
+      minFlightDate,
+      departureAirportId: query.departureAirportId,
+      arriveAirportId: query.arriveAirportId,
+      flightStatus: query.flightStatus,
+      effectiveStatusAt: now
     });
 
     if (flightsEntity?.length === 0) {
@@ -101,7 +113,7 @@ export class GetFlightsHandler implements IQueryHandler<GetFlights> {
 
     const result = flightsEntity.map((flight) => {
       const dto = mapper.map<Flight, FlightDto>(flight, new FlightDto());
-      dto.flightStatus = getEffectiveFlightStatus(flight);
+      dto.flightStatus = getEffectiveFlightStatus(flight, now);
 
       return dto;
     });

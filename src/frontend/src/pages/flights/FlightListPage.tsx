@@ -24,9 +24,8 @@ import { useGetFlights } from '@hooks/useFlights';
 import { useIsDesktop } from '@hooks/useResponsive';
 import { useAdminMode } from '@stores/auth.store';
 import { AirportDto } from '@/types/airport.types';
-import { PaginationParams } from '@/types/common.types';
 import { FlightStatus } from '@/types/enums';
-import { FlightDto } from '@/types/flight.types';
+import { FlightDto, GetFlightsParams } from '@/types/flight.types';
 import { flightStatusLabels, formatCurrency, formatDuration } from '@utils/format';
 import {
   buildRouteDescriptor,
@@ -74,43 +73,54 @@ export const FlightListPage = () => {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const adminMode = useAdminMode();
-  const [params, setParams] = useState<PaginationParams>({
+  const [params, setParams] = useState<GetFlightsParams>({
     page: 1,
     pageSize: 10,
     order: 'ASC',
     orderBy: 'flightDate',
     searchTerm: ''
   });
-  const [statusFilter, setStatusFilter] = useState<FlightStatus | 'all'>('all');
 
   const airportsQuery = useGetAirports();
   const aircraftsQuery = useGetAircrafts();
   const flightsQuery = useGetFlights(params);
+  const flights = useMemo(() => flightsQuery.data?.data || [], [flightsQuery.data?.data]);
 
   const airportMap = useMemo(() => {
     const entries = (airportsQuery.data || []).map((airport) => [airport.id, airport] as const);
     return Object.fromEntries(entries) as Record<number, AirportDto>;
   }, [airportsQuery.data]);
 
+  const airportOptions = useMemo(
+    () =>
+      (airportsQuery.data || []).map((airport) => ({
+        label: `${airport.code} - ${airport.name}`,
+        value: airport.id
+      })),
+    [airportsQuery.data]
+  );
+
+  const departureAirportOptions = useMemo(
+    () => airportOptions.filter((airport) => airport.value !== params.arriveAirportId),
+    [airportOptions, params.arriveAirportId]
+  );
+
+  const arriveAirportOptions = useMemo(
+    () => airportOptions.filter((airport) => airport.value !== params.departureAirportId),
+    [airportOptions, params.departureAirportId]
+  );
+
   const aircraftMap = useMemo(() => {
     const entries = (aircraftsQuery.data || []).map((aircraft) => [aircraft.id, aircraft.name] as const);
     return Object.fromEntries(entries) as Record<number, string>;
   }, [aircraftsQuery.data]);
-
-  const tableData = useMemo(() => {
-    const data = flightsQuery.data?.data || [];
-    if (statusFilter === 'all') {
-      return data;
-    }
-    return data.filter((flight) => flight.flightStatus === statusFilter);
-  }, [flightsQuery.data?.data, statusFilter]);
   const hasFlightsResult = Boolean(flightsQuery.data);
   const isInitialResultsLoad = flightsQuery.isLoading && !hasFlightsResult;
   const isResultsRefetching = flightsQuery.isFetching && hasFlightsResult;
   const shouldShowEmptyState =
-    hasFlightsResult && !isInitialResultsLoad && !isResultsRefetching && tableData.length === 0;
+    hasFlightsResult && !isInitialResultsLoad && !isResultsRefetching && flights.length === 0;
   const shouldShowMobilePlaceholder =
-    isInitialResultsLoad || (!tableData.length && isResultsRefetching);
+    isInitialResultsLoad || (!flights.length && isResultsRefetching);
   const resultsLoading =
     isInitialResultsLoad ||
     isResultsRefetching ||
@@ -123,8 +133,16 @@ export const FlightListPage = () => {
       action={
         <Button
           onClick={() => {
-            setStatusFilter('all');
-            setParams((prev) => ({ ...prev, searchTerm: '', page: 1 }));
+            setParams({
+              page: 1,
+              pageSize: 10,
+              order: 'ASC',
+              orderBy: 'flightDate',
+              searchTerm: '',
+              departureAirportId: null,
+              arriveAirportId: null,
+              flightStatus: null
+            });
           }}
         >
           Reset filters
@@ -227,6 +245,32 @@ export const FlightListPage = () => {
     [airportMap, adminMode, navigate]
   );
 
+  const handleDepartureAirportChange = (value?: number) => {
+    setParams((prev) => ({
+      ...prev,
+      page: 1,
+      departureAirportId: value ?? null,
+      arriveAirportId: prev.arriveAirportId === value ? null : prev.arriveAirportId
+    }));
+  };
+
+  const handleArrivalAirportChange = (value?: number) => {
+    setParams((prev) => ({
+      ...prev,
+      page: 1,
+      arriveAirportId: value ?? null,
+      departureAirportId: prev.departureAirportId === value ? null : prev.departureAirportId
+    }));
+  };
+
+  const handleStatusFilterChange = (value: FlightStatus | 'all') => {
+    setParams((prev) => ({
+      ...prev,
+      page: 1,
+      flightStatus: value === 'all' ? null : value
+    }));
+  };
+
   const handleTableChange = (
     pagination: TablePaginationConfig,
     _filters: Record<string, unknown>,
@@ -262,7 +306,7 @@ export const FlightListPage = () => {
       />
 
       <FilterBar
-        summary={`${tableData.length} visible / ${flightsQuery.data?.total || 0} total · sort ${params.orderBy}:${params.order}`}
+        summary={`${flights.length} visible / ${flightsQuery.data?.total || 0} total · sort ${params.orderBy}:${params.order}`}
         actions={
           <Space>
             <Button
@@ -277,15 +321,16 @@ export const FlightListPage = () => {
             </Button>
             <Button
               onClick={() => {
-                setStatusFilter('all');
-                setParams((prev) => ({
-                  ...prev,
+                setParams({
                   page: 1,
                   pageSize: 10,
                   order: 'ASC',
                   orderBy: 'flightDate',
-                  searchTerm: ''
-                }));
+                  searchTerm: '',
+                  departureAirportId: null,
+                  arriveAirportId: null,
+                  flightStatus: null
+                });
               }}
             >
               Clear filters
@@ -310,9 +355,29 @@ export const FlightListPage = () => {
           style={{ width: 280 }}
         />
         <Select
+          allowClear
           size="large"
           style={{ width: 220 }}
-          value={statusFilter}
+          placeholder="Departure airport"
+          value={params.departureAirportId ?? undefined}
+          options={departureAirportOptions}
+          loading={airportsQuery.isLoading}
+          onChange={handleDepartureAirportChange}
+        />
+        <Select
+          allowClear
+          size="large"
+          style={{ width: 220 }}
+          placeholder="Arrival airport"
+          value={params.arriveAirportId ?? undefined}
+          options={arriveAirportOptions}
+          loading={airportsQuery.isLoading}
+          onChange={handleArrivalAirportChange}
+        />
+        <Select
+          size="large"
+          style={{ width: 220 }}
+          value={params.flightStatus ?? 'all'}
           options={[
             { label: 'All statuses', value: 'all' },
             ...Object.values(FlightStatus)
@@ -322,7 +387,7 @@ export const FlightListPage = () => {
                 value: status as FlightStatus
               }))
           ]}
-          onChange={(value) => setStatusFilter(value)}
+          onChange={handleStatusFilterChange}
         />
       </FilterBar>
 
@@ -333,7 +398,7 @@ export const FlightListPage = () => {
           <FlightResultsPlaceholder />
         ) : (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            {tableData.map((flight) => (
+            {flights.map((flight) => (
               <FlightCard
                 key={flight.id}
                 flight={flight}
@@ -362,7 +427,7 @@ export const FlightListPage = () => {
         <DataTable<FlightDto>
           loading={resultsLoading}
           columns={columns}
-          dataSource={tableData}
+          dataSource={flights}
           locale={{
             emptyText: shouldShowEmptyState ? emptyState : <span />
           }}

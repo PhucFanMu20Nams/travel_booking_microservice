@@ -37,7 +37,10 @@ describe('GetFlightsController', () => {
       pageSize: 10,
       orderBy: 'flightDate',
       order: 'ASC' as const,
-      searchTerm: 'VN'
+      searchTerm: 'VN',
+      departureAirportId: 1,
+      arriveAirportId: 2,
+      flightStatus: FlightStatus.SCHEDULED
     };
 
     await controller.getFlights(query as any, { user: { role: String(Role.ADMIN) } } as any);
@@ -82,6 +85,9 @@ describe('GetFlightsHandler', () => {
         orderBy: 'flightDate',
         order: 'ASC',
         searchTerm: 'VN',
+        departureAirportId: 1,
+        arriveAirportId: 2,
+        flightStatus: FlightStatus.SCHEDULED,
         isAdmin: false
       })
     );
@@ -92,7 +98,11 @@ describe('GetFlightsHandler', () => {
       orderBy: 'flightDate',
       order: 'ASC',
       searchTerm: 'VN',
-      minFlightDate: new Date('2026-03-24T17:00:00.000Z')
+      minFlightDate: new Date('2026-03-24T17:00:00.000Z'),
+      departureAirportId: 1,
+      arriveAirportId: 2,
+      flightStatus: FlightStatus.SCHEDULED,
+      effectiveStatusAt: new Date('2026-03-25T05:00:00.000Z')
     });
     expect(result.total).toBe(1);
     expect(result.result?.[0]?.flightNumber).toBe('VN123');
@@ -120,7 +130,11 @@ describe('GetFlightsHandler', () => {
       orderBy: 'flightDate',
       order: 'ASC',
       searchTerm: null,
-      minFlightDate: undefined
+      minFlightDate: undefined,
+      departureAirportId: undefined,
+      arriveAirportId: undefined,
+      flightStatus: undefined,
+      effectiveStatusAt: expect.any(Date)
     });
   });
 });

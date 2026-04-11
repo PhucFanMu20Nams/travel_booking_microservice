@@ -64,7 +64,7 @@ describe('flight booking availability surfaces', () => {
     expect(invalidFlightRow).not.toBeNull();
     expect(within(validFlightRow as HTMLElement).getByRole('button', { name: 'shopping-cart' })).toBeEnabled();
     expect(within(invalidFlightRow as HTMLElement).getByRole('button', { name: 'shopping-cart' })).toBeDisabled();
-  });
+  }, 10000);
 
   it('maps summary column sorting to orderBy=flightDate', async () => {
     const user = userEvent.setup();

@@ -2,18 +2,33 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { flightApi } from '@api/flight.api';
-import { CreateFlightRequest, FlightDto } from '@/types/flight.types';
-import { AppError, PaginationParams, PagedResult } from '@/types/common.types';
+import { CreateFlightRequest, FlightDto, GetFlightsParams } from '@/types/flight.types';
+import { AppError, PagedResult } from '@/types/common.types';
 import { buildPaginationParams, normalizeProblemError } from '@utils/helpers';
 
 export const flightKeys = {
   all: ['flights'] as const,
-  list: (params: PaginationParams) => ['flights', 'list', params] as const,
+  list: (params: GetFlightsParams) => ['flights', 'list', params] as const,
   detail: (id: number) => ['flights', 'detail', id] as const
 };
 
+const buildGetFlightsParams = (params: GetFlightsParams): GetFlightsParams => {
+  const pagination = buildPaginationParams(params);
+
+  return {
+    ...pagination,
+    departureAirportId:
+      typeof params.departureAirportId === 'number' && params.departureAirportId > 0
+        ? params.departureAirportId
+        : undefined,
+    arriveAirportId:
+      typeof params.arriveAirportId === 'number' && params.arriveAirportId > 0 ? params.arriveAirportId : undefined,
+    flightStatus: typeof params.flightStatus === 'number' ? params.flightStatus : undefined
+  };
+};
+
 const toUiPagedResult = (
-  params: PaginationParams,
+  params: GetFlightsParams,
   apiData: { result: FlightDto[] | null; total: number }
 ): PagedResult<FlightDto[]> => {
   const pagination = buildPaginationParams(params);
@@ -25,11 +40,11 @@ const toUiPagedResult = (
   };
 };
 
-export const useGetFlights = (params: PaginationParams) =>
+export const useGetFlights = (params: GetFlightsParams) =>
   useQuery({
-    queryKey: flightKeys.list(buildPaginationParams(params)),
+    queryKey: flightKeys.list(buildGetFlightsParams(params)),
     queryFn: async () => {
-      const requestParams = buildPaginationParams(params);
+      const requestParams = buildGetFlightsParams(params);
       const response = await flightApi.getAll(requestParams);
       return toUiPagedResult(requestParams, response.data);
     },
